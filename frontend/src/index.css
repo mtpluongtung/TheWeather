@@ -448,6 +448,31 @@ body,
   font-size: 15px;
   font-weight: 800;
   color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wc-card-place-indicator {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: wcPulseIndicator 1.8s infinite ease-in-out;
+}
+
+@keyframes wcPulseIndicator {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+    box-shadow: 0 0 12px #38bdf8, 0 0 4px #fff;
+  }
 }
 
 .wc-card-coords {
@@ -1402,10 +1427,37 @@ body,
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
+  will-change: transform, opacity;
+  transform-origin: right top;
 }
 
 .wc-hud-right-stack .wc-hud-weather-card {
   width: 340px;
+  will-change: transform, opacity;
+}
+
+.wc-hud-chart-anim-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  will-change: transform, opacity;
+  transform-origin: right top;
+}
+
+.wc-hud-anim-enter {
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.28));
+}
+
+.wc-hud-anim-settled {
+  filter: none;
+}
+
+.wc-hud-anim-exit {
+  filter: drop-shadow(0 0 14px rgba(249, 115, 22, 0.2));
+}
+
+.wc-metric-box {
+  will-change: transform, opacity;
 }
 
 /* Intraday chart card */

@@ -166,6 +166,7 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
   radarTileUrl,
   currentTimeSec,
   totalDurationSec,
+  isPlaying,
   isRenderMode,
   forecastDate,
   onCameraTelemetryChange,
@@ -188,13 +189,16 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
   const effectiveHighlightId =
     highlightedPlaceIdOverride || activeScene?.location.place_id || 'vietnam_overview';
 
+  // Check if current scene is a national overview (intro/outro without single province forecast)
+  const isOverviewScene = !activeScene || activeScene.location.place_id === 'vietnam_overview';
+
   const activeWeather: WeatherForecastItem | null =
     (highlightedPlaceIdOverride
       ? forecasts.find((f) => f.place_id === highlightedPlaceIdOverride)
       : null) ||
     activeScene?.weather_data ||
     forecasts.find((f) => f.place_id === activeScene?.location.place_id) ||
-    forecasts[0] ||
+    (isOverviewScene ? null : forecasts[0]) ||
     null;
 
   // Progress ratio (0..1) inside the currently narrated scene for synchronized intraday chart scanning
@@ -203,6 +207,127 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
     const elapsed = currentTimeSec - activeScene.start_time;
     return Math.max(0, Math.min(1, elapsed / activeScene.duration_sec));
   }, [activeScene, currentTimeSec]);
+
+  // Deterministic animation state for Regional Weather Parameters Card & Intraday Chart (Enter & Exit per region)
+  const shouldShowRegionMetrics = !!activeWeather && (!isOverviewScene || !!highlightedPlaceIdOverride);
+
+  const regionAnim = useMemo(() => {
+    // If user manually clicked or overridden a place in UI, show immediately settled
+    if (highlightedPlaceIdOverride && activeWeather) {
+      return {
+        shouldRender: true,
+        phase: 'settled' as const,
+        cardOpacity: 1,
+        cardTranslateX: 0,
+        cardScale: 1,
+        chartOpacity: 1,
+        chartTranslateX: 0,
+        chartScale: 1,
+        chartRevealRatio: 1,
+        metricStaggerRatio: 1,
+      };
+    }
+
+    if (!shouldShowRegionMetrics || !activeScene) {
+      return {
+        shouldRender: false,
+        phase: 'hidden' as const,
+        cardOpacity: 0,
+        cardTranslateX: 60,
+        cardScale: 0.94,
+        chartOpacity: 0,
+        chartTranslateX: 65,
+        chartScale: 0.93,
+        chartRevealRatio: 0,
+        metricStaggerRatio: 0,
+      };
+    }
+
+    const dur = Math.max(0.5, activeScene.end_time - activeScene.start_time);
+    const localT = Math.max(0, Math.min(dur, currentTimeSec - activeScene.start_time));
+    const flightSec = Math.min(3.4, Math.max(1.6, dur * 0.38));
+
+    // Start enter as the camera approaches and descends onto the region
+    const enterStart = Math.min(dur * 0.28, Math.max(0.2, flightSec * 0.45));
+    const enterDur = Math.min(0.95, Math.max(0.45, dur * 0.16));
+    const enterEnd = enterStart + enterDur;
+
+    // Start exit before the camera departs for the next scene
+    const exitDur = Math.min(0.85, Math.max(0.4, dur * 0.14));
+    const exitStart = Math.max(enterEnd + 0.3, dur - exitDur);
+
+    if (localT < enterStart) {
+      return {
+        shouldRender: false,
+        phase: 'hidden' as const,
+        cardOpacity: 0,
+        cardTranslateX: 60,
+        cardScale: 0.94,
+        chartOpacity: 0,
+        chartTranslateX: 65,
+        chartScale: 0.93,
+        chartRevealRatio: 0,
+        metricStaggerRatio: 0,
+      };
+    }
+
+    if (localT >= enterStart && localT < enterEnd) {
+      const u = Math.max(0, Math.min(1, (localT - enterStart) / enterDur));
+      const easeCard = 1 - Math.pow(1 - u, 3); // easeOutCubic
+
+      const chartU = Math.max(0, Math.min(1, (localT - (enterStart + 0.12)) / (enterDur * 0.88)));
+      const easeChart = 1 - Math.pow(1 - chartU, 3);
+
+      const metricU = Math.max(0, Math.min(1, (localT - (enterStart + 0.08)) / (enterDur * 0.85)));
+      const easeMetric = 1 - Math.pow(1 - metricU, 2.5);
+
+      return {
+        shouldRender: true,
+        phase: 'enter' as const,
+        cardOpacity: Number(easeCard.toFixed(4)),
+        cardTranslateX: Number(((1 - easeCard) * 50).toFixed(2)),
+        cardScale: Number((0.94 + 0.06 * easeCard).toFixed(4)),
+        chartOpacity: Number(easeChart.toFixed(4)),
+        chartTranslateX: Number(((1 - easeChart) * 55).toFixed(2)),
+        chartScale: Number((0.93 + 0.07 * easeChart).toFixed(4)),
+        chartRevealRatio: Number(easeChart.toFixed(4)),
+        metricStaggerRatio: Number(easeMetric.toFixed(4)),
+      };
+    }
+
+    if (localT >= enterEnd && localT < exitStart) {
+      return {
+        shouldRender: true,
+        phase: 'settled' as const,
+        cardOpacity: 1,
+        cardTranslateX: 0,
+        cardScale: 1,
+        chartOpacity: 1,
+        chartTranslateX: 0,
+        chartScale: 1,
+        chartRevealRatio: 1,
+        metricStaggerRatio: 1,
+      };
+    }
+
+    // Exiting phase
+    const rem = Math.max(0, dur - localT);
+    const v = Math.min(1, rem / exitDur);
+    const easeExit = Math.pow(v, 2.2);
+
+    return {
+      shouldRender: easeExit > 0.005,
+      phase: 'exit' as const,
+      cardOpacity: Number(easeExit.toFixed(4)),
+      cardTranslateX: Number(((1 - easeExit) * 55).toFixed(2)),
+      cardScale: Number((0.95 + 0.05 * easeExit).toFixed(4)),
+      chartOpacity: Number(easeExit.toFixed(4)),
+      chartTranslateX: Number(((1 - easeExit) * 60).toFixed(2)),
+      chartScale: Number((0.95 + 0.05 * easeExit).toFixed(4)),
+      chartRevealRatio: Number(easeExit.toFixed(4)),
+      metricStaggerRatio: Number(easeExit.toFixed(4)),
+    };
+  }, [shouldShowRegionMetrics, activeScene, currentTimeSec, highlightedPlaceIdOverride, activeWeather]);
 
   const activeHighlightFeatures = useMemo(
     () => extractMatchingBoundaryFeatures(adminBoundaries, effectiveHighlightId),
@@ -748,6 +873,24 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
   const progressRatio =
     totalDurationSec > 0 ? Math.min(100, (currentTimeSec / totalDurationSec) * 100) : 0;
 
+  const getMetricBoxStyle = (index: number): React.CSSProperties => {
+    const delay = index * 0.07;
+    const raw = Math.max(0, Math.min(1, (regionAnim.metricStaggerRatio - delay) / Math.max(0.01, 1 - delay * 0.75)));
+    const ease = 1 - Math.pow(1 - raw, 2.2);
+    return {
+      opacity: regionAnim.phase === 'settled' ? 1 : ease,
+      transform: regionAnim.phase === 'settled' ? 'none' : `translateY(${(1 - ease) * 8}px)`,
+      transition: isPlaying ? 'opacity 0.12s ease-out, transform 0.12s ease-out' : 'none',
+    };
+  };
+
+  const mainTempStyle: React.CSSProperties = {
+    color: getTempColorHex(activeWeather?.temperature_c ?? null),
+    opacity: regionAnim.cardOpacity,
+    transform: regionAnim.phase === 'settled' ? 'none' : `scale(${0.92 + 0.08 * regionAnim.cardOpacity})`,
+    transition: isPlaying ? 'opacity 0.12s ease-out, transform 0.12s ease-out' : 'none',
+  };
+
   return (
     <div
       className={`wc-stage-wrapper ${isRenderMode ? 'wc-stage-render-mode' : ''} wc-aspect-${aspectRatio.replace(':', '-')}`}
@@ -786,22 +929,30 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
             </div>
           </div>
 
-          {/* Right Stack: Active Location Weather Card + Synchronized Intraday Chart */}
-          {activeWeather && (
-            <div className="wc-hud-right-stack">
+          {/* Right Stack: Active Location Weather Card + Synchronized Intraday Chart with Enter/Exit Region Animations */}
+          {activeWeather && regionAnim.shouldRender && (
+            <div
+              className={`wc-hud-right-stack wc-hud-anim-${regionAnim.phase}`}
+              style={{
+                opacity: regionAnim.cardOpacity,
+                transform: `translateX(${regionAnim.cardTranslateX}px) scale(${regionAnim.cardScale})`,
+                transition: isPlaying ? 'opacity 0.15s ease-out, transform 0.15s ease-out' : 'none',
+                pointerEvents: regionAnim.cardOpacity > 0.1 ? 'auto' : 'none',
+              }}
+            >
               <div className="wc-hud-weather-card">
                 <div className="wc-card-header">
                   <div>
-                    <div className="wc-card-place">{activeWeather.place_name}</div>
+                    <div className="wc-card-place">
+                      <span className="wc-card-place-indicator" />
+                      <span>{activeWeather.place_name}</span>
+                    </div>
                     <div className="wc-card-coords">
                       {activeWeather.lat.toFixed(2)}°B, {activeWeather.lon.toFixed(2)}°Đ •{' '}
                       {activeWeather.weather_description_vi}
                     </div>
                   </div>
-                  <div
-                    className="wc-card-temp-main"
-                    style={{ color: getTempColorHex(activeWeather.temperature_c) }}
-                  >
+                  <div className="wc-card-temp-main" style={mainTempStyle}>
                     {activeWeather.temperature_c !== null
                       ? `${activeWeather.temperature_c.toFixed(1)}°C`
                       : 'Chưa có'}
@@ -809,20 +960,20 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
                 </div>
 
                 <div className="wc-card-metrics-grid">
-                  <div className="wc-metric-box">
+                  <div className="wc-metric-box" style={getMetricBoxStyle(0)}>
                     <span className="wc-metric-label">Cao / Thấp</span>
                     <span className="wc-metric-val">
                       {activeWeather.temp_max_c ?? '--'}° / {activeWeather.temp_min_c ?? '--'}°C
                     </span>
                   </div>
-                  <div className="wc-metric-box">
+                  <div className="wc-metric-box" style={getMetricBoxStyle(1)}>
                     <span className="wc-metric-label">Khả năng / Lượng mưa</span>
                     <span className="wc-metric-val">
                       {activeWeather.precipitation_probability_pct ?? 0}% (
                       {activeWeather.precipitation_mm ?? 0} mm)
                     </span>
                   </div>
-                  <div className="wc-metric-box">
+                  <div className="wc-metric-box" style={getMetricBoxStyle(2)}>
                     <span className="wc-metric-label">Gió & Gió giật</span>
                     <span className="wc-metric-val">
                       {activeWeather.wind_speed_kmh ?? '--'} /{' '}
@@ -832,7 +983,7 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
                       km/h
                     </span>
                   </div>
-                  <div className="wc-metric-box">
+                  <div className="wc-metric-box" style={getMetricBoxStyle(3)}>
                     <span className="wc-metric-label">UV / Độ ẩm</span>
                     <span className="wc-metric-val">
                       UV {activeWeather.uv_index ?? '--'} • {activeWeather.relative_humidity_pct ?? '--'}%
@@ -843,11 +994,22 @@ export const RealMapCanvas: React.FC<RealMapCanvasProps> = ({
 
               {/* Intraday Hourly Timeline Chart (Nhiệt độ, Mưa, Bão/Giông lốc, Sấm sét) */}
               {aspectRatio !== '9:16' && (
-                <IntradayWeatherChart
-                  weather={activeWeather}
-                  sceneProgressRatio={sceneProgressRatio}
-                  compact={true}
-                />
+                <div
+                  className="wc-hud-chart-anim-wrapper"
+                  style={{
+                    opacity: regionAnim.chartOpacity,
+                    transform: `translateX(${regionAnim.chartTranslateX}px) scale(${regionAnim.chartScale})`,
+                    transition: isPlaying ? 'opacity 0.15s ease-out, transform 0.15s ease-out' : 'none',
+                  }}
+                >
+                  <IntradayWeatherChart
+                    weather={activeWeather}
+                    sceneProgressRatio={sceneProgressRatio}
+                    chartRevealRatio={regionAnim.chartRevealRatio}
+                    animPhase={regionAnim.phase}
+                    compact={true}
+                  />
+                </div>
               )}
             </div>
           )}

@@ -4,6 +4,8 @@ import { HourlyForecastSlot, SevereWeatherSummary, WeatherForecastItem } from '.
 interface IntradayWeatherChartProps {
   weather: WeatherForecastItem;
   sceneProgressRatio?: number; // 0..1 progress within active scene to animate active slot scanner
+  chartRevealRatio?: number; // 0..1 progress to animate the reveal of curves & bars per region
+  animPhase?: 'enter' | 'settled' | 'exit' | 'hidden';
   compact?: boolean;
 }
 
@@ -59,6 +61,8 @@ function getAlertBadgeStyle(level?: SevereWeatherSummary['storm_alert_level']): 
 export const IntradayWeatherChart: React.FC<IntradayWeatherChartProps> = ({
   weather,
   sceneProgressRatio = 0,
+  chartRevealRatio = 1,
+  animPhase = 'settled',
   compact = true,
 }) => {
   const slots: HourlyForecastSlot[] =
@@ -139,7 +143,13 @@ export const IntradayWeatherChart: React.FC<IntradayWeatherChartProps> = ({
   const barWidth = compact ? 18 : 30;
 
   return (
-    <div className={`wc-intraday-chart-card ${compact ? 'wc-chart-compact' : 'wc-chart-expanded'}`}>
+    <div
+      className={`wc-intraday-chart-card ${compact ? 'wc-chart-compact' : 'wc-chart-expanded'} wc-chart-anim-${animPhase}`}
+      style={{
+        opacity: Math.min(1, chartRevealRatio * 1.5),
+        transform: `scale(${0.96 + 0.04 * Math.min(1, chartRevealRatio)})`,
+      }}
+    >
       {/* Header */}
       <div className="wc-chart-header">
         <div className="wc-chart-title-wrap">
@@ -196,6 +206,14 @@ export const IntradayWeatherChart: React.FC<IntradayWeatherChartProps> = ({
               <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.72" />
               <stop offset="100%" stopColor="#0284c7" stopOpacity="0.2" />
             </linearGradient>
+            <clipPath id={`wcChartRevealClip-${weather.place_id}`}>
+              <rect
+                x="0"
+                y="0"
+                width={Math.max(0, svgW * Math.min(1, Math.max(0, chartRevealRatio)))}
+                height={svgH}
+              />
+            </clipPath>
           </defs>
 
           {/* Horizontal Grid Lines (25%, 50%, 75%, 100%) */}
@@ -230,114 +248,117 @@ export const IntradayWeatherChart: React.FC<IntradayWeatherChartProps> = ({
             />
           )}
 
-          {/* 1. Precipitation Probability Bars (%) */}
-          {slots.map((s, i) => {
-            const x = getX(i);
-            const barH = (Math.max(2, s.precipitation_probability_pct) / 100) * plotH;
-            const y = padTop + plotH - barH;
-            return (
-              <g key={`rain-${s.hour}`}>
-                <rect
-                  x={x - barWidth / 2}
-                  y={y}
-                  width={barWidth}
-                  height={barH}
-                  rx={3}
-                  fill="url(#wcRainBarGrad)"
-                  stroke="rgba(56, 189, 248, 0.45)"
-                  strokeWidth="0.8"
-                />
-                {s.precipitation_probability_pct >= 10 && (
+          {/* 1-4. Animated Multi-Metric Series with Left-to-Right Reveal */}
+          <g clipPath={chartRevealRatio < 0.999 ? `url(#wcChartRevealClip-${weather.place_id})` : undefined}>
+            {/* 1. Precipitation Probability Bars (%) */}
+            {slots.map((s, i) => {
+              const x = getX(i);
+              const barH = (Math.max(2, s.precipitation_probability_pct) / 100) * plotH;
+              const y = padTop + plotH - barH;
+              return (
+                <g key={`rain-${s.hour}`}>
+                  <rect
+                    x={x - barWidth / 2}
+                    y={y}
+                    width={barWidth}
+                    height={barH}
+                    rx={3}
+                    fill="url(#wcRainBarGrad)"
+                    stroke="rgba(56, 189, 248, 0.45)"
+                    strokeWidth="0.8"
+                  />
+                  {s.precipitation_probability_pct >= 10 && (
+                    <text
+                      x={x}
+                      y={Math.max(padTop + 10, y - 3)}
+                      textAnchor="middle"
+                      fill="#7dd3fc"
+                      fontSize={compact ? '8.5' : '10'}
+                      fontWeight="700"
+                    >
+                      {s.precipitation_probability_pct}%
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* 2. Storm / Squall Risk Line (Bão / Giông lốc %) */}
+            <polyline
+              fill="none"
+              stroke="#c084fc"
+              strokeWidth="1.8"
+              points={stormPoints}
+            />
+            {slots.map((s, i) => (
+              <circle
+                key={`storm-pt-${s.hour}`}
+                cx={getX(i)}
+                cy={getPctY(s.storm_squall_risk_pct)}
+                r={2.5}
+                fill="#c084fc"
+              />
+            ))}
+
+            {/* 3. Thunder / Lightning Risk Line (Sấm sét %) */}
+            <polyline
+              fill="none"
+              stroke="#facc15"
+              strokeWidth="1.6"
+              strokeDasharray="4 2"
+              points={thunderPoints}
+            />
+            {slots.map((s, i) => (
+              <circle
+                key={`thunder-pt-${s.hour}`}
+                cx={getX(i)}
+                cy={getPctY(s.thunder_lightning_risk_pct)}
+                r={2.3}
+                fill="#facc15"
+              />
+            ))}
+
+            {/* 4. Temperature Area & Curve (°C) */}
+            <polygon fill="url(#wcTempAreaGrad)" points={tempAreaPoints} />
+            <polyline
+              fill="none"
+              stroke="#fb923c"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={tempPoints}
+            />
+
+            {/* Temperature Nodes & Labels */}
+            {slots.map((s, i) => {
+              const cx = getX(i);
+              const cy = getTempY(s.temperature_c);
+              const isHighlighted = i === activeSlotIdx;
+              return (
+                <g key={`temp-node-${s.hour}`}>
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={isHighlighted ? 4.5 : 3.2}
+                    fill={isHighlighted ? '#ffffff' : '#fb923c'}
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
                   <text
-                    x={x}
-                    y={Math.max(padTop + 10, y - 3)}
+                    x={cx}
+                    y={cy - 6}
                     textAnchor="middle"
-                    fill="#7dd3fc"
-                    fontSize={compact ? '8.5' : '10'}
-                    fontWeight="700"
+                    fill="#ffffff"
+                    fontSize={compact ? '9.5' : '11'}
+                    fontWeight="800"
+                    style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
                   >
-                    {s.precipitation_probability_pct}%
+                    {Math.round(s.temperature_c)}°
                   </text>
-                )}
-              </g>
-            );
-          })}
-
-          {/* 2. Storm / Squall Risk Line (Bão / Giông lốc %) */}
-          <polyline
-            fill="none"
-            stroke="#c084fc"
-            strokeWidth="1.8"
-            points={stormPoints}
-          />
-          {slots.map((s, i) => (
-            <circle
-              key={`storm-pt-${s.hour}`}
-              cx={getX(i)}
-              cy={getPctY(s.storm_squall_risk_pct)}
-              r={2.5}
-              fill="#c084fc"
-            />
-          ))}
-
-          {/* 3. Thunder / Lightning Risk Line (Sấm sét %) */}
-          <polyline
-            fill="none"
-            stroke="#facc15"
-            strokeWidth="1.6"
-            strokeDasharray="4 2"
-            points={thunderPoints}
-          />
-          {slots.map((s, i) => (
-            <circle
-              key={`thunder-pt-${s.hour}`}
-              cx={getX(i)}
-              cy={getPctY(s.thunder_lightning_risk_pct)}
-              r={2.3}
-              fill="#facc15"
-            />
-          ))}
-
-          {/* 4. Temperature Area & Curve (°C) */}
-          <polygon fill="url(#wcTempAreaGrad)" points={tempAreaPoints} />
-          <polyline
-            fill="none"
-            stroke="#fb923c"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={tempPoints}
-          />
-
-          {/* Temperature Nodes & Labels */}
-          {slots.map((s, i) => {
-            const cx = getX(i);
-            const cy = getTempY(s.temperature_c);
-            const isHighlighted = i === activeSlotIdx;
-            return (
-              <g key={`temp-node-${s.hour}`}>
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isHighlighted ? 4.5 : 3.2}
-                  fill={isHighlighted ? '#ffffff' : '#fb923c'}
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <text
-                  x={cx}
-                  y={cy - 6}
-                  textAnchor="middle"
-                  fill="#ffffff"
-                  fontSize={compact ? '9.5' : '11'}
-                  fontWeight="800"
-                  style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
-                >
-                  {Math.round(s.temperature_c)}°
-                </text>
-              </g>
-            );
-          })}
+                </g>
+              );
+            })}
+          </g>
 
           {/* Bottom Time Labels (00h..21h) */}
           {slots.map((s, i) => (
