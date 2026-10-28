@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import subprocess
+import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
@@ -186,12 +187,13 @@ class VideoRendererService:
                 return await self._execute_render_pipeline(project_id)
             except Exception as exc:
                 logger.exception("Lỗi trong quá trình render dự án %s", project_id)
+                err_msg = str(exc).strip() or exc.__class__.__name__
                 self._update_state(
                     project_id,
                     status="failed",
                     progress_pct=0.0,
-                    step_msg=f"Lỗi render: {exc}",
-                    error_message=str(exc),
+                    step_msg=f"Lỗi render: {err_msg}",
+                    error_message=err_msg,
                 )
                 raise
             finally:
@@ -358,17 +360,37 @@ class VideoRendererService:
             ffmpeg_proc = subprocess.Popen(
                 ffmpeg_cmd,
                 stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
 
+            stderr_chunks: list[bytes] = []
+
+            def _drain_stderr() -> None:
+                try:
+                    if ffmpeg_proc.stderr:
+                        while True:
+                            chunk = ffmpeg_proc.stderr.read(4096)
+                            if not chunk:
+                                break
+                            stderr_chunks.append(chunk)
+                except Exception:
+                    pass
+
+            drain_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            drain_thread.start()
+
             try:
                 for frame_idx in range(total_frames):
+                    if ffmpeg_proc.poll() is not None:
+                        err_tail = b"".join(stderr_chunks).decode("utf-8", errors="replace")[-500:]
+                        raise RuntimeError(f"FFmpeg dừng đột ngột (mã thoát {ffmpeg_proc.returncode}): {err_tail}")
+
                     t_sec = frame_idx / float(capture_fps)
                     await page.evaluate(f"window.__seekWeatherCastFrame__({t_sec:.4f})")
                     frame_bytes = await page.screenshot(type="jpeg", quality=90, animations="allow")
                     if ffmpeg_proc.stdin:
-                        ffmpeg_proc.stdin.write(frame_bytes)
+                        await asyncio.to_thread(ffmpeg_proc.stdin.write, frame_bytes)
 
                     if frame_idx % max(1, total_frames // 20) == 0 or frame_idx == total_frames - 1:
                         pct = 35.0 + (frame_idx + 1) / float(total_frames) * 55.0
@@ -385,7 +407,11 @@ class VideoRendererService:
                         )
             finally:
                 if ffmpeg_proc.stdin:
-                    ffmpeg_proc.stdin.close()
+                    try:
+                        ffmpeg_proc.stdin.flush()
+                        ffmpeg_proc.stdin.close()
+                    except Exception:
+                        pass
                 await context.close()
                 await browser.close()
 
@@ -398,8 +424,10 @@ class VideoRendererService:
                 total_frames=total_frames,
             )
 
-            _, stderr_bytes = await asyncio.to_thread(ffmpeg_proc.communicate, timeout=120)
+            await asyncio.to_thread(ffmpeg_proc.wait, timeout=120)
+            drain_thread.join(timeout=5)
             if ffmpeg_proc.returncode != 0:
+                stderr_bytes = b"".join(stderr_chunks)
                 err_txt = stderr_bytes.decode("utf-8", errors="replace")[-600:]
                 raise RuntimeError(f"FFmpeg trả về mã lỗi {ffmpeg_proc.returncode}: {err_txt}")
 

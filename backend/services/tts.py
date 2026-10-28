@@ -177,7 +177,7 @@ class TTSService:
             clean_rate = f"{clean_rate}%"
 
         last_err: Optional[Exception] = None
-        for attempt in range(1, 3):
+        for attempt in range(1, 4):
             try:
                 communicate = edge_tts.Communicate(text=text, voice=voice_id, rate=clean_rate)
                 await communicate.save(str(output_path))
@@ -188,7 +188,12 @@ class TTSService:
             except Exception as exc:
                 last_err = exc
                 logger.warning("Edge TTS thử lần %d thất bại: %s", attempt, exc)
-                await asyncio.sleep(0.5)
+                try:
+                    if output_path.exists() and output_path.stat().st_size <= 256:
+                        output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                await asyncio.sleep(1.0 * attempt)
 
         logger.error("Edge TTS không khả dụng (%s), sử dụng fallback WAV", last_err)
         est_dur = max(4.0, round(len(text.split()) / 3.1, 2))
