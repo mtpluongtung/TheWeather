@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import subprocess
+import sys
 import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -176,6 +177,15 @@ class VideoRendererService:
         }
         db.update_progress(project_id, progress, output_file=output_file)
 
+    def _run_render_in_proactor_thread(self, project_id: str) -> Dict[str, Any]:
+        """Run the render pipeline in a separate thread with a dedicated ProactorEventLoop on Windows."""
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._execute_render_pipeline(project_id))
+        finally:
+            loop.close()
+
     async def render_project_mp4(self, project_id: str) -> Dict[str, Any]:
         """Full 13-step broadcast video rendering pipeline using Playwright Chromium + MapLibre GL JS + FFmpeg."""
         if project_id in self._active_projects:
@@ -184,6 +194,12 @@ class VideoRendererService:
         async with self._render_lock:
             self._active_projects.add(project_id)
             try:
+                curr_loop = asyncio.get_running_loop()
+                # On Windows, SelectorEventLoop raises NotImplementedError when spawning browser subprocesses.
+                # If running on SelectorEventLoop (e.g. under Uvicorn with --reload), run in a Proactor thread.
+                if sys.platform == "win32" and not isinstance(curr_loop, asyncio.ProactorEventLoop):
+                    logger.info("Phát hiện %s trên Windows. Chuyển sang ProactorEventLoop thread để render...", type(curr_loop).__name__)
+                    return await asyncio.to_thread(self._run_render_in_proactor_thread, project_id)
                 return await self._execute_render_pipeline(project_id)
             except Exception as exc:
                 logger.exception("Lỗi trong quá trình render dự án %s", project_id)
