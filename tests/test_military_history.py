@@ -100,3 +100,16 @@ async def test_military_tts_audio_synthesis_and_duration(tmp_path):
     assert "master_audio_path" in tts_res
     assert "srt_path" in tts_res
     assert len(tts_res["subtitle_chunks"]) >= 1
+
+
+def test_scenario_render_endpoint():
+    # Test triggering render via API endpoint
+    res = client.post(
+        "/api/scenarios/rach_gam_xoai_mut_1785/render",
+        json={"aspect_ratio": "16:9", "resolution": "720p", "fps": 30},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["scenario_id"] == "rach_gam_xoai_mut_1785"
+    assert "progress" in data
+    assert data["progress"]["status"] in ("preparing_audio", "syncing_timeline", "rendering_map", "completed")

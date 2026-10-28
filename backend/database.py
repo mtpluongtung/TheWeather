@@ -194,24 +194,38 @@ class DatabaseManager:
         now_str = now_vn_iso()
         progress["updated_at"] = now_str
         with self._get_conn() as conn:
-            if output_file is not None:
+            row = conn.execute("SELECT id FROM battle_scenarios WHERE id = ?", (scenario_id,)).fetchone()
+            if not row:
+                scen = self.get_scenario(scenario_id) or {"id": scenario_id, "title": scenario_id}
+                title = scen.get("title", scenario_id)
+                data_json = json.dumps(scen, ensure_ascii=False)
+                progress_json = json.dumps(progress, ensure_ascii=False)
                 conn.execute(
                     """
-                    UPDATE battle_scenarios
-                    SET progress_json = ?, output_file = ?, updated_at = ?
-                    WHERE id = ?
+                    INSERT INTO battle_scenarios (id, title, data_json, progress_json, output_file, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (json.dumps(progress, ensure_ascii=False), output_file, now_str, scenario_id),
+                    (scenario_id, title, data_json, progress_json, output_file, now_str, now_str),
                 )
             else:
-                conn.execute(
-                    """
-                    UPDATE battle_scenarios
-                    SET progress_json = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (json.dumps(progress, ensure_ascii=False), now_str, scenario_id),
-                )
+                if output_file is not None:
+                    conn.execute(
+                        """
+                        UPDATE battle_scenarios
+                        SET progress_json = ?, output_file = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (json.dumps(progress, ensure_ascii=False), output_file, now_str, scenario_id),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE battle_scenarios
+                        SET progress_json = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (json.dumps(progress, ensure_ascii=False), now_str, scenario_id),
+                    )
             conn.commit()
 
     def get_scenario_progress(self, scenario_id: str) -> Dict[str, Any]:
