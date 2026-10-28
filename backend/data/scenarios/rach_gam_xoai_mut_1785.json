@@ -408,7 +408,7 @@
     ]
   },
   "created_at": "2026-10-28T16:22:30+07:00",
-  "updated_at": "2026-10-28T16:23:22+07:00",
+  "updated_at": "2026-10-28T16:38:02+07:00",
   "progress": {
     "scenario_id": "rach_gam_xoai_mut_1785",
     "status": "preparing_audio",
@@ -416,7 +416,7 @@
     "current_step": "Đang chuẩn bị tổng hợp thuyết minh & góc quay sa bàn 3D...",
     "frames_rendered": 0,
     "total_frames": 0,
-    "updated_at": "2026-10-28T16:22:59+07:00"
+    "updated_at": "2026-10-28T16:37:57+07:00"
   },
-  "output_file": null
+  "output_file": "military_rach_gam_xoai_mut_1785_16x9_720p_20261028_162323.mp4"
 }

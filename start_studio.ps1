@@ -1,8 +1,9 @@
 # ============================================================================
-# WEATHERCAST STUDIO - SCRIPT KHOI CHAY TREN WINDOWS POWERSHELL
+# ⚔️ ARES STUDIO - SA BÀN CHIẾN DỊCH LỊCH SỬ 3D (POWERSHELL STARTER)
 # ============================================================================
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+$env:PYTHONIOENCODING = "utf-8"
 
 if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
     Copy-Item ".env.example" ".env"
@@ -24,11 +25,11 @@ if (-not (Test-Path ".\frontend\node_modules")) {
 }
 
 Write-Host "[1/2] Khoi dong FastAPI Backend tai http://127.0.0.1:8000 ..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot'; .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot'; `$env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe main.py"
 
 Write-Host "[2/2] Khoi dong Vite Frontend tai http://127.0.0.1:5173 ..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot\frontend'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot'; npm run dev"
 
 Start-Sleep -Seconds 3
 Start-Process "http://127.0.0.1:5173"
-Write-Host "WeatherCast Studio da khoi dong tai http://127.0.0.1:5173" -ForegroundColor Yellow
+Write-Host "⚔️ Ares Military History Studio da khoi dong tai http://127.0.0.1:5173" -ForegroundColor Yellow

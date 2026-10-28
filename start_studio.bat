@@ -1,7 +1,8 @@
 @echo off
 chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 echo ============================================================================
-echo   WEATHERCAST STUDIO - KHOI DONG HE THONG TREN WINDOWS 10/11
+echo   ⚔️  ARES STUDIO - SA BÀN CHIẾN DỊCH LỊCH SỬ 3D (ANIMATED MILITARY MAP)
 echo ============================================================================
 
 cd /d "%~dp0"
@@ -20,17 +21,24 @@ if not exist ".venv\Scripts\python.exe" (
     .\.venv\Scripts\playwright.exe install chromium
 )
 
-echo [1/2] Dang khoi dong FastAPI Backend tai http://127.0.0.1:8000 ...
-start "WeatherCast Backend API" cmd /k ".\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
+if not exist "frontend\node_modules" (
+    echo [INFO] Dang cai dat npm packages cho frontend...
+    cd frontend
+    call npm install
+    cd ..
+)
 
-echo [2/2] Dang khoi dong Vite React MapLibre Frontend tai http://127.0.0.1:5173 ...
-start "WeatherCast Frontend Studio" cmd /k "cd frontend && npm run dev"
+echo [1/2] Dang khoi dong FastAPI Backend tai http://127.0.0.1:8000 ...
+start "Ares Military Backend" cmd /k "set PYTHONIOENCODING=utf-8 && .\.venv\Scripts\python.exe main.py"
+
+echo [2/2] Dang khoi dong Vite 3D Studio tai http://127.0.0.1:5173 ...
+start "Ares Military Studio Frontend" cmd /k "npm run dev"
 
 timeout /t 3 >nul
 start "" "http://127.0.0.1:5173"
 
 echo ============================================================================
-echo   WeatherCast Studio dang chay!
+echo   ⚔️  Ares Military History Studio dang chay!
 echo   - Giao dien Studio: http://127.0.0.1:5173
 echo   - Tai lieu OpenAPI: http://127.0.0.1:8000/docs
 echo ============================================================================

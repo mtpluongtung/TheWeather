@@ -1,153 +1,102 @@
-# WeatherCast Studio – Hệ Thống AI Tạo Video Dự Báo Thời Tiết Việt Nam
+# ⚔️ ARES – Animated Military History Map Studio
+> **Sa Bàn Tác Chiến Lịch Sử 3D – Hệ Thống Tự Động Hóa Sản Xuất Video Diễn Biến Chiến Dịch (Phong cách Kings and Generals & The Operations Room)**
 
-**WeatherCast Studio** là ứng dụng web Full-Stack kết hợp **bản đồ địa lý 3D thật (MapLibre GL JS)**, **dữ liệu dự báo thời tiết thực tế (Open-Meteo API & RainViewer Radar, đối chiếu cảnh báo chính thức từ NCHMF)**, **kịch bản lời dẫn tiếng Việt tự nhiên**, **giọng đọc Neural TTS tiếng Việt (`edge-tts`)** và **pipeline ghi hình xuất video MP4 thực tế (Playwright Chromium + FFmpeg)**.
-
----
-
-## 1. Kiến Trúc Hệ Thống & Nguyên Tắc Kỹ Thuật
-
-1. **Bản đồ địa lý thật 100% (MapLibre GL JS)**:
-   - Hiển thị vector/raster tiles thực tế từ **OpenFreeMap**, **Carto**, **OpenStreetMap** (và tùy chọn **MapTiler** qua `.env`).
-   - Hỗ trợ **địa hình nổi 3D DEM thật** từ nguồn **AWS Open Data Terrain Tiles (Terrarium DEM)** kết hợp góc nghiêng camera 3D (`pitch`, `bearing`, `zoom`, `center`). Giao diện phân biệt rõ chế độ *Camera 3D Pitch* và *Địa hình 3D DEM Terrarium*.
-   - Danh mục tọa độ thực WGS84 (`backend/data/places.json`) bao gồm các preset vùng miền (Toàn cảnh Việt Nam, Miền Bắc, Miền Trung, Tây Nguyên, Nam Bộ), các tỉnh/thành phố (Hà Nội, Bắc Ninh, Hải Phòng, Quảng Ninh, Lào Cai, Huế, Đà Nẵng, Khánh Hòa, Lâm Đồng, Đắk Lắk, TP. Hồ Chí Minh, Cần Thơ, Cà Mau, Phú Quốc...) và mốc chủ quyền **Quần đảo Hoàng Sa**, **Quần đảo Trường Sa**.
-   - Thiết kế mở theo phiên bản hành chính `2025.2-VN-ADMIN` (ghi nhận đơn vị hành chính sáp nhập 2025 song song với tra cứu chi tiết địa phương).
-
-2. **Nguồn dữ liệu thời tiết thực tế (`backend/services/weather.py`)**:
-   - Dự báo số trị theo tọa độ: **Open-Meteo Forecast API** (`https://api.open-meteo.com/v1/forecast`, múi giờ `Asia/Ho_Chi_Minh`).
-   - Lớp Radar mưa & mây vệ tinh: **RainViewer Public API** (`https://api.rainviewer.com/public/weather-maps.json`).
-   - Tham chiếu cảnh báo chính thức: **Trung tâm Dự báo Khí tượng Thủy văn Quốc gia (NCHMF)** (`https://www.nchmf.gov.vn/kttv/`). Hệ thống tách biệt rõ *dự báo từ mô hình số trị* với *bản tin cảnh báo thiên tai chính thức*, tuyệt đối không tự suy đoán hay bịa đặt cảnh báo bão/lũ.
-
-3. **Sinh lời dẫn & Giọng đọc đồng bộ Camera (`script_generator.py`, `tts.py`, `camera_timeline.py`)**:
-   - Hỗ trợ 4 phong cách lời dẫn: **Truyền hình chuyên nghiệp (`broadcast`)**, **Ngắn gọn (`concise`)**, **Thân thiện (`friendly`)**, **Chi tiết (`detailed`)**.
-   - Hỗ trợ **Controlled Broadcast Template Engine** (hoạt động mặc định không cần khóa API, khớp 100% số liệu thật) và **LLM Adapter** tùy chọn (`LLM_PROVIDER=gemini` trong `.env`).
-   - Tổng hợp giọng đọc tiếng Việt bằng `edge-tts` (`vi-VN-HoaiMyNeural`, `vi-VN-NamMinhNeural`), đo thời lượng âm thanh thực tế của từng cảnh bằng `ffprobe`, tự động tính lại `start_time` / `end_time` của từng phân cảnh và tạo phụ đề `.srt` khớp từng khung hình.
-
-4. **Kiến trúc Render Video MP4 (`backend/services/video_renderer.py`)**:
-   - Mở trình duyệt **Chromium (Playwright)** ở chế độ Studio Render (`/?renderMode=1&projectId=...`) với WebGL (`preserveDrawingBuffer: true`).
-   - Nạp trước (pre-warm) toàn bộ các ô bản đồ dọc theo hành trình bay.
-   - Điều khiển camera MapLibre GL JS theo đúng hàm nội suy thời gian thực (`window.__seekWeatherCastFrame__(t)`), chụp chuỗi khung hình bản đồ thật đang chuyển động và đẩy trực tiếp qua ống dẫn `image2pipe` vào **FFmpeg** (`libx264`, `yuv420p`, `30 FPS`), ghép âm thanh giọng đọc + nhạc nền ambient (`aac`, `192kbps`).
-   - Kiểm tra chất lượng đầu ra bằng `ffprobe` trước khi trả file MP4 cho người dùng tải về.
+Ares là studio sản xuất video lịch sử quân sự bán tự động: kết hợp **sa bàn 3D địa hình thực (MapLibre GL JS + DEM Terrarium)**, **mũi tên tác chiến uốn lượn động (Dynamic Curved Arrows)**, **biểu tượng đơn vị chuẩn NATO (NATO Military Counters)**, **vùng kiểm soát lãnh thổ co rút (Dynamic Frontline Pockets)**, **thuyết minh tiếng Việt hào hùng (Edge Neural TTS)** hòa âm cùng nhạc nền chiến trận, và **pipeline ghi hình từng khung hình chất lượng cao xuất file MP4 (Playwright Chromium + FFmpeg)**.
 
 ---
 
-## 2. Cấu Trúc Thư Mục
+## 1. Tính Năng Chiến Thuật Chuyên Sâu
+
+1. **Sa bàn địa hình 3D thực tế (3D DEM Terrain)**:
+   - Tái tạo thung lũng Mường Thanh (Điện Biên Phủ), sông ngòi Rạch Gầm - Xoài Mút với tỷ lệ nổi địa hình 1.6x, thể hiện rõ thế đứng của pháo binh trên các sườn núi cao bao bọc thung lũng.
+2. **Mũi tên chiến thuật tiến công động (Curved Tactical Arrows)**:
+   - Thuật toán đường cong Bezier (De Casteljau) tính toán tiếp tuyến và sinh đầu mũi tên polygon quân sự có góc vát nhọn theo thời gian thực ($t$).
+   - Đa dạng binh chủng: Mũi xung kích thọc sâu (`main_thrust`), mũi vu hồi đánh tạt sườn (`flanking`), vòng vây chiến hào đào lấn siết chặt (`encirclement`), bão lửa pháo binh (`artillery_barrage`).
+3. **Biểu tượng quân sự chuẩn NATO (NATO Military Counters)**:
+   - Ký hiệu chuẩn: Bộ binh ($\times$), Pháo binh ($\bullet$), Thiết giáp ($\bigcirc$), Sở chỉ huy ($\sqsubset$), Thủy binh.
+   - Hiển thị cấp bậc quân đoàn (`XXX`), sư đoàn (`XX`), trung đoàn (`III`), tiểu đoàn (`II`).
+   - Thanh đo quân số/máu trực quan biến đổi theo tương quan thương vong.
+4. **Giao diện HUD Phim Tài Liệu Quân Sự (Military Documentary HUD)**:
+   - **Tương quan lực lượng**: Thanh đo tỷ lệ chia đôi động (Việt Minh vs Quân Pháp), đồng hồ đếm thương vong thời gian thực, bảng tướng lĩnh chỉ huy.
+   - **Chronometer lịch sử**: Hiển thị mốc thời gian lịch sử (`13/03/1954 - 17:05`) và đồng hồ chiến dịch $T+$.
+   - **Mục tiêu chiến dịch**: Banner mục tiêu quân sự ngắn gọn của từng đợt tấn công.
+   - **Hộp phụ đề 16:9 Cinematic**: Đặt tại đáy màn hình, font chữ rõ nét, viền mờ cao cấp chuẩn phim tư liệu.
+5. **Bộ kịch bản lịch sử tích hợp**:
+   - **Chiến dịch Điện Biên Phủ (1954)**: 4 đợt tiến công mở màn Him Lam, tiêu diệt Độc Lập - Bản Kéo, siết chặt vòng vây chiến hào cắt đứt sân bay, nổ bộc phá đồi A1 và bắt sống tướng De Castries.
+   - **Trận Rạch Gầm - Xoài Mút (1785)**: Nguyễn Huệ dụ địch và dùng đại bác cù lao Thới Sơn kết hợp thuyền phục binh Rạch Gầm khóa đuôi chặn đầu, đại phá 5 vạn quân Xiêm.
+
+---
+
+## 2. Cách Khởi Động Nhanh (1 Click)
+
+### Cách 1: Chạy bằng file tự động (Khuyên dùng trên Windows)
+- **Cách đơn giản nhất**: Double-click vào file `start_studio.bat` (hoặc mở PowerShell gõ `.\start_studio.ps1`).
+- Hệ thống sẽ tự động cấu hình môi trường, khởi động Backend + Frontend và mở trình duyệt tại `http://127.0.0.1:5173`.
+
+### Cách 2: Chạy thủ công từ Terminal
+
+Mở 2 cửa sổ terminal tại thư mục gốc của dự án:
+
+**Terminal 1 (Backend API):**
+```powershell
+python main.py
+# Hoặc: .\.venv\Scripts\python.exe main.py
+```
+> Server API chạy tại: `http://127.0.0.1:8000` (Docs: `http://127.0.0.1:8000/docs`)
+
+**Terminal 2 (Frontend Studio):**
+```powershell
+npm run dev
+```
+> Web Studio chạy tại: `http://127.0.0.1:5173`
+
+---
+
+## 3. Cấu Trúc Dự Án
 
 ```text
 TheWeather/
 ├── backend/
 │   ├── api/
-│   │   └── routes.py            # Các REST API endpoints (/api/health, /api/places, /api/forecast, ...)
+│   │   └── routes.py              # API kịch bản trận đánh (/api/scenarios, /api/scenarios/{id}/render, ...)
 │   ├── data/
-│   │   ├── places.json          # Tọa độ địa lý thực WGS84 & cấu hình hành chính Việt Nam
-│   │   └── weathercast.db       # Cơ sở dữ liệu SQLite lưu dự án & lịch sử render
-│   ├── output/                  # Thư mục chứa file MP4, WAV/MP3 TTS và phụ đề SRT
+│   │   └── scenarios/             # Dữ liệu JSON kịch bản chiến dịch (Điện Biên Phủ, Rạch Gầm - Xoài Mút)
 │   ├── services/
-│   │   ├── weather.py           # Tích hợp Open-Meteo API, RainViewer Radar & tham chiếu NCHMF
-│   │   ├── script_generator.py  # Sinh lời dẫn tiếng Việt & LLM Adapter
-│   │   ├── tts.py               # Tổng hợp giọng đọc Edge TTS, ghép nhạc nền & tạo SRT
-│   │   ├── camera_timeline.py   # Đồng bộ hóa đường bay 3D camera với thời lượng audio
-│   │   └── video_renderer.py    # Pipeline Playwright Chromium + MapLibre + FFmpeg xuất MP4
-│   ├── config.py                # Quản lý cấu hình từ biến môi trường (.env)
-│   ├── database.py              # Lớp truy xuất SQLite
-│   ├── models.py                # Pydantic schemas
-│   └── main.py                  # Điểm khởi chạy FastAPI server
+│   │   ├── tts.py                 # Neural TTS tiếng Việt hào hùng + tạo nhạc nền combat ambient BGM
+│   │   └── video_renderer.py      # Pipeline Playwright Chromium + FFmpeg image2pipe render MP4
+│   ├── config.py                  # Cấu hình hệ thống
+│   ├── database.py                # Quản lý SQLite lưu trữ kịch bản & tiến trình render
+│   ├── models.py                  # Pydantic schemas chuẩn quân sự
+│   └── main.py                    # Điểm khởi chạy FastAPI
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   └── RealMapCanvas.tsx # Bản đồ 3D MapLibre GL JS + Lớp thời tiết + HUD Truyền hình
+│   │   │   ├── TacticalMilitaryCanvas.tsx # Sa bàn 3D MapLibre, mũi tên Bezier, ký hiệu NATO, nổ bộc phá
+│   │   │   └── MilitaryDocumentaryHUD.tsx # HUD tương quan quân số, chronometer, mục tiêu, phụ đề 16:9
 │   │   ├── services/
-│   │   │   ├── api.ts            # Kết nối REST API
-│   │   │   └── cameraMath.ts     # Nội suy chuyển động camera 3D & phụ đề
+│   │   │   ├── api.ts                     # REST API client
+│   │   │   ├── militaryTimelineEngine.ts  # Động cơ nội suy thời gian, camera slerp, bridge Playwright
+│   │   │   └── tacticalArrowMath.ts       # Toán học giải tích mũi tên uốn lượn Bezier & đầu polygon
 │   │   ├── types/
-│   │   │   └── weathercast.ts    # TypeScript interfaces
-│   │   ├── App.tsx               # Giao diện biên tập viên WeatherCast Studio
-│   │   ├── index.css             # Giao diện Studio truyền hình hiện đại
-│   │   └── main.tsx              # React entrypoint
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
+│   │   │   └── military.ts                # TypeScript interfaces
+│   │   ├── App.tsx                        # Giao diện Military History Studio
+│   │   └── index.css                      # Phong cách đồ họa quân sự cao cấp
 ├── tests/
-│   └── test_weathercast.py      # Bộ kiểm thử tự động (Pytest)
-├── .env.example                 # File mẫu cấu hình môi trường
-├── requirements.txt             # Danh sách thư viện Python
-├── start_studio.bat             # Script khởi chạy nhanh trên Windows (CMD)
-├── start_studio.ps1             # Script khởi chạy nhanh trên Windows (PowerShell)
-└── README.md                    # Tài liệu hướng dẫn
+│   ├── test_military_history.py   # Bộ kiểm thử kịch bản, âm thanh và pipeline render quân sự
+│   └── test_weathercast.py        # Bộ kiểm thử cơ sở hệ thống
+├── main.py                        # Điểm khởi động Backend tại thư mục gốc
+├── package.json                   # Script npm tại thư mục gốc (npm run dev, npm run build)
+├── start_studio.bat               # Khởi động 1-click Windows CMD
+├── start_studio.ps1               # Khởi động 1-click Windows PowerShell
+└── README.md
 ```
 
 ---
 
-## 3. Hướng Dẫn Cài Đặt & Chạy Trên Windows 10/11
+## 4. Kiểm Thử Hệ Thống (Pytest)
 
-### Yêu cầu hệ thống
-- **Windows 10 hoặc Windows 11** (64-bit).
-- **Python 3.11 / 3.12 / 3.13** (Khuyên dùng Python 3.12 thông qua `py -3.12`).
-- **Node.js 18+** và **npm**.
-- **FFmpeg & FFprobe** đã cài đặt trong `PATH` hệ thống (kiểm tra bằng lệnh `ffmpeg -version`).
-
-### Cách 1: Khởi chạy tự động bằng 1 cú nhấp chuột
-Nhấp đúp vào file **`start_studio.bat`** hoặc chạy trên PowerShell:
+Chạy kiểm thử toàn bộ hệ thống bằng lệnh:
 ```powershell
-.\start_studio.ps1
+.\.venv\Scripts\pytest.exe tests/test_military_history.py -v
 ```
-
-### Cách 2: Cài đặt và chạy từng bước thủ công
-
-**Bước 1: Tạo môi trường ảo Python và cài đặt thư viện**
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\pip.exe install -r requirements.txt
-.\.venv\Scripts\playwright.exe install chromium
-```
-
-**Bước 2: Cấu hình file `.env`**
-```powershell
-copy .env.example .env
-```
-*(Mặc định hệ thống hoạt động đầy đủ ngay mà không bắt buộc phải điền API key trả phí).*
-
-**Bước 3: Cài đặt và build Frontend**
-```powershell
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-**Bước 4: Khởi động Backend & Frontend**
-- Chạy Backend FastAPI (Terminal 1):
-  ```powershell
-  .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-  ```
-- Chạy Frontend Vite Dev Server (Terminal 2):
-  ```powershell
-  cd frontend
-  npm run dev
-  ```
-- Mở trình duyệt tại: **`http://127.0.0.1:5173`** (hoặc **`http://127.0.0.1:8000`** nếu đã chạy `npm run build`).
-- Tài liệu OpenAPI (Swagger UI): **`http://127.0.0.1:8000/docs`**.
-
----
-
-## 4. Hướng Dẫn Khắc Phục Lỗi Thường Gặp Trên Windows
-
-1. **Lỗi WebGL hoặc màn hình bản đồ đen khi render ở chế độ Headless**:
-   - Mặc định hệ thống đã cấu hình cờ `--use-gl=angle --use-angle=d3d11` tương thích với GPU Windows 10/11.
-   - Nếu máy ảo hoặc card đồ họa cũ không hỗ trợ Direct3D11 trong tiến trình ẩn, hãy mở file `.env` và đổi:
-     ```ini
-     PLAYWRIGHT_GL_BACKEND=swiftshader
-     ```
-     hoặc đặt `PLAYWRIGHT_HEADLESS=false` để Chromium mở cửa sổ trực tiếp khi ghi hình.
-2. **Lỗi `Python was not found` do Microsoft Store Alias**:
-   - Sử dụng `py -3.12` hoặc tắt App Execution Aliases cho `python.exe` trong *Settings > Apps > Advanced app settings > App execution aliases*.
-3. **Lỗi không tìm thấy `ffmpeg` hoặc `ffprobe`**:
-   - Cài đặt FFmpeg qua Winget (`winget install Gyan.FFmpeg`) hoặc chỉ định đường dẫn tuyệt đối trong `.env` (`FFMPEG_BINARY=C:/path/to/ffmpeg.exe`).
-
----
-
-## 5. Chạy Kiểm Thử Tự Động (Automated Tests)
-
-```powershell
-.\.venv\Scripts\pytest.exe tests/ -v
-```
+Toàn bộ các bài test bao gồm kiểm tra dữ liệu chiến dịch WGS84, tổng hợp giọng nói thuyết minh tiếng Việt, hòa âm nhạc nền, và quy trình render MP4 đều đạt 100% thành công.
