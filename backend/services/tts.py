@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional
 import edge_tts
 
 from backend.config import settings
-from backend.models import SceneItem
+from backend.models import SceneItem, BattleTimelineStep
 
 logger = logging.getLogger("weathercast.tts")
 
@@ -98,13 +98,46 @@ def generate_ambient_bgm_wav(output_wav: Path, duration_sec: float) -> Path:
             lfo = 0.85 + 0.15 * math.sin(2.0 * math.pi * 0.25 * t)
             val = 0.0
             for idx, f in enumerate(freqs):
-                val += math.sin(2.0 * math.pi * f * t + idx * 0.4) * (0.35 / len(freqs))
-            # Delicate chime pulse every 4 seconds
-            beat_phase = t % 4.0
-            chime = math.exp(-beat_phase * 3.5) * math.sin(2.0 * math.pi * 523.25 * t) * 0.06
-            sample = int(32767 * (val * lfo + chime) * fade_in * fade_out * 0.18)
-            sample = max(-32767, min(32767, sample))
-            chunk_data.extend(struct.pack("<h", sample))
+                weight = 1.0 / (idx + 1)
+                val += weight * math.sin(2.0 * math.pi * f * t)
+            # Gentle master gain ~ -24dB to sit under voice
+            sample_val = int(800 * fade_in * fade_out * lfo * val)
+            sample_val = max(-32767, min(32767, sample_val))
+            chunk_data.extend(struct.pack("<h", sample_val))
+        wf.writeframes(bytes(chunk_data))
+    return output_wav
+
+
+def generate_battle_ambient_bgm_wav(output_wav: Path, duration_sec: float) -> Path:
+    """
+    Generate a cinematic, low-rumble tactical documentary ambient score
+    (D minor tension drone with subtle rhythmic march pulse) suitable for historical war documentaries.
+    """
+    sample_rate = 24000
+    total_samples = int(sample_rate * max(1.0, duration_sec))
+    freqs = [73.42, 110.00, 146.83, 174.61, 220.00]  # D2, A2, D3, F3, A3 (D-minor cinematic tension)
+
+    with wave.open(str(output_wav), "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        chunk_data = bytearray()
+        for i in range(total_samples):
+            t = i / sample_rate
+            fade_in = min(1.0, t / 2.0)
+            fade_out = min(1.0, max(0.0, (duration_sec - t) / 2.5))
+            # 1.2 Hz slow pulse (battle tension)
+            pulse = 0.8 + 0.2 * math.sin(2.0 * math.pi * 1.2 * t)
+            val = 0.0
+            for idx, f in enumerate(freqs):
+                weight = 1.0 / (idx + 1)
+                val += weight * math.sin(2.0 * math.pi * f * t)
+            # Sub-bass rumble
+            sub = 0.35 * math.sin(2.0 * math.pi * 36.71 * t)
+            combined = val + sub
+            sample_val = int(950 * fade_in * fade_out * pulse * combined)
+            sample_val = max(-32767, min(32767, sample_val))
+            chunk_data.extend(struct.pack("<h", sample_val))
         wf.writeframes(bytes(chunk_data))
     return output_wav
 
@@ -328,6 +361,135 @@ class TTSService:
             "master_audio_url": f"/api/projects/{project_id}/media/{final_audio_wav.name}",
             "srt_path": str(srt_path),
             "srt_url": f"/api/projects/{project_id}/media/{srt_path.name}",
+            "subtitle_chunks": all_sub_chunks,
+            "tts_engines": list(engines_used),
+        }
+
+    async def synthesize_scenario_steps(
+        self,
+        scenario_id: str,
+        steps: List[BattleTimelineStep],
+        voice_id: str = "vi-VN-NamMinhNeural",
+        voice_rate: str = "+0%",
+        enable_bgm: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Synthesize voice narration for each step of a military battle scenario,
+        pad audio accurately, concatenate into master documentary audio track,
+        generate background combat ambient tension BGM, and build synchronized subtitles.
+        """
+        scenario_dir = settings.output_dir / f"scenario_{scenario_id}"
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+
+        current_time = 0.0
+        step_audio_files: List[Tuple[Path, float]] = []
+        engines_used = set()
+        all_sub_chunks: List[Dict[str, Any]] = []
+
+        for idx, step in enumerate(steps):
+            raw_mp3 = scenario_dir / f"step_{idx:02d}.mp3"
+            audio_file, exact_dur, engine = await self.synthesize_scene_audio(
+                text=step.narration_text,
+                output_path=raw_mp3,
+                voice_id=voice_id,
+                rate=voice_rate,
+            )
+            engines_used.add(engine)
+
+            norm_wav = scenario_dir / f"step_{idx:02d}_padded.wav"
+            pad_cmd = [
+                settings.ffmpeg_binary,
+                "-y",
+                "-i",
+                str(audio_file),
+                "-af",
+                "apad=pad_dur=0.35",
+                "-ar",
+                "24000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                str(norm_wav),
+            ]
+            subprocess.run(pad_cmd, capture_output=True, check=True, timeout=30)
+            measured_dur = probe_audio_duration(norm_wav)
+
+            step.start_time = round(current_time, 3)
+            step.duration_sec = round(measured_dur, 3)
+            step.end_time = round(current_time + measured_dur, 3)
+            step.voice_audio = f"/api/scenarios/{scenario_id}/media/{norm_wav.name}"
+
+            chunks = split_subtitle_chunks(step.narration_text, step.start_time, step.end_time)
+            all_sub_chunks.extend(chunks)
+
+            step_audio_files.append((norm_wav, measured_dur))
+            current_time += measured_dur
+
+        total_duration = round(current_time, 3)
+
+        concat_txt = scenario_dir / "scenario_audio_concat.txt"
+        with open(concat_txt, "w", encoding="utf-8") as f:
+            for wav_path, _ in step_audio_files:
+                safe_p = str(wav_path.resolve()).replace("\\", "/")
+                f.write(f"file '{safe_p}'\n")
+
+        voice_master_wav = scenario_dir / "master_voice.wav"
+        concat_cmd = [
+            settings.ffmpeg_binary,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_txt),
+            "-c:a",
+            "pcm_s16le",
+            str(voice_master_wav),
+        ]
+        subprocess.run(concat_cmd, capture_output=True, check=True, timeout=60)
+
+        final_audio_wav = voice_master_wav
+        if enable_bgm:
+            bgm_wav = scenario_dir / "battle_ambient_bgm.wav"
+            generate_battle_ambient_bgm_wav(bgm_wav, total_duration)
+            mixed_wav = scenario_dir / "master_mixed.wav"
+            mix_cmd = [
+                settings.ffmpeg_binary,
+                "-y",
+                "-i",
+                str(voice_master_wav),
+                "-i",
+                str(bgm_wav),
+                "-filter_complex",
+                "[0:a]volume=1.0[v];[1:a]volume=0.25[b];[v][b]amix=inputs=2:duration=first:dropout_transition=2[out]",
+                "-map",
+                "[out]",
+                "-ar",
+                "24000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                str(mixed_wav),
+            ]
+            subprocess.run(mix_cmd, capture_output=True, check=True, timeout=60)
+            final_audio_wav = mixed_wav
+
+        srt_path = scenario_dir / "subtitles.srt"
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for s_idx, ch in enumerate(all_sub_chunks, start=1):
+                f.write(f"{s_idx}\n")
+                f.write(f"{_format_srt_time(ch['start_time'])} --> {_format_srt_time(ch['end_time'])}\n")
+                f.write(f"{ch['text']}\n\n")
+
+        return {
+            "total_duration_sec": probe_audio_duration(final_audio_wav),
+            "master_audio_path": str(final_audio_wav),
+            "master_audio_url": f"/api/scenarios/{scenario_id}/media/{final_audio_wav.name}",
+            "srt_path": str(srt_path),
+            "srt_url": f"/api/scenarios/{scenario_id}/media/{srt_path.name}",
             "subtitle_chunks": all_sub_chunks,
             "tts_engines": list(engines_used),
         }

@@ -17,6 +17,8 @@ from backend.models import (
     SceneItem,
     ScriptGenerationRequest,
     ScriptGenerationResponse,
+    BattleScenario,
+    ScenarioRenderRequest,
 )
 from backend.services.camera_timeline import camera_timeline_service
 from backend.services.script_generator import script_generator
@@ -360,6 +362,151 @@ async def get_project_media_file(project_id: str, filename: str) -> FileResponse
     project_dir = (settings.output_dir / f"project_{project_id}").resolve()
     target_path = (project_dir / filename).resolve()
     if project_dir not in target_path.parents or not target_path.exists():
+        raise HTTPException(status_code=404, detail="Không tìm thấy file media.")
+
+    suffix = target_path.suffix.lower()
+    media_type = "audio/wav"
+    if suffix == ".mp3":
+        media_type = "audio/mpeg"
+    elif suffix == ".srt":
+        media_type = "text/plain; charset=utf-8"
+
+    return FileResponse(path=str(target_path), media_type=media_type, filename=filename)
+
+
+# ==========================================
+# ⚔️ MILITARY HISTORY MAP SCENARIO ENDPOINTS
+# ==========================================
+
+@router.get("/scenarios", summary="Danh sách các kịch bản trận đánh lịch sử")
+async def list_battle_scenarios() -> dict:
+    scenarios = db.list_scenarios()
+    return {
+        "count": len(scenarios),
+        "scenarios": scenarios,
+    }
+
+
+@router.get("/scenarios/{scenario_id}", summary="Lấy chi tiết kịch bản trận đánh (đơn vị, mũi tên, thời gian, camera)")
+async def get_battle_scenario(scenario_id: str) -> dict:
+    _validate_safe_id(scenario_id, "scenario_id")
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy kịch bản trận đánh '{scenario_id}'")
+    return scenario
+
+
+@router.post("/scenarios", summary="Lưu hoặc tạo mới kịch bản trận đánh")
+async def create_or_save_scenario(scenario: BattleScenario) -> dict:
+    saved = db.save_scenario(scenario.model_dump())
+    return {
+        "message": f"Đã lưu kịch bản trận đánh '{saved['title']}' thành công.",
+        "scenario_id": saved["id"],
+        "scenario": saved,
+    }
+
+
+@router.put("/scenarios/{scenario_id}", summary="Cập nhật kịch bản trận đánh")
+async def update_battle_scenario(scenario_id: str, scenario: BattleScenario) -> dict:
+    _validate_safe_id(scenario_id, "scenario_id")
+    data = scenario.model_dump()
+    data["id"] = scenario_id
+    saved = db.save_scenario(data)
+    return {
+        "message": f"Đã cập nhật kịch bản '{saved['title']}' thành công.",
+        "scenario_id": scenario_id,
+        "scenario": saved,
+    }
+
+
+@router.post("/scenarios/{scenario_id}/render", summary="Bắt đầu render video MP4 diễn biến trận đánh")
+async def start_scenario_render(
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    render_req: Optional[ScenarioRenderRequest] = None,
+) -> dict:
+    _validate_safe_id(scenario_id, "scenario_id")
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy kịch bản '{scenario_id}'")
+
+    req = render_req or ScenarioRenderRequest()
+    if video_renderer_service.is_rendering(f"scenario_{scenario_id}"):
+        raise HTTPException(status_code=409, detail="Kịch bản này đang được render trong một tiến trình khác.")
+
+    db.update_scenario_progress(
+        scenario_id,
+        {
+            "scenario_id": scenario_id,
+            "status": "preparing_audio",
+            "progress_pct": 5.0,
+            "current_step": "Đang chuẩn bị tổng hợp thuyết minh & góc quay sa bàn 3D...",
+            "frames_rendered": 0,
+            "total_frames": 0,
+        },
+    )
+
+    async def _bg_scenario_job() -> None:
+        try:
+            await video_renderer_service.render_scenario_mp4(scenario_id, req)
+        except Exception as e:
+            logger.error("Background render scenario failed for %s: %s", scenario_id, e)
+
+    background_tasks.add_task(_bg_scenario_job)
+    return {
+        "message": "Đã bắt đầu tiến trình render video sa bàn quân sự MP4.",
+        "scenario_id": scenario_id,
+        "progress": db.get_scenario_progress(scenario_id),
+    }
+
+
+@router.get("/scenarios/{scenario_id}/progress", summary="Theo dõi tiến độ render video sa bàn quân sự")
+async def get_scenario_render_progress(scenario_id: str) -> dict:
+    _validate_safe_id(scenario_id, "scenario_id")
+    return db.get_scenario_progress(scenario_id)
+
+
+@router.get("/scenarios/{scenario_id}/download", summary="Tải xuống file video MP4 sa bàn lịch sử")
+async def download_scenario_mp4(scenario_id: str) -> FileResponse:
+    _validate_safe_id(scenario_id, "scenario_id")
+    scenario = db.get_scenario(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy kịch bản '{scenario_id}'")
+
+    prog = db.get_scenario_progress(scenario_id)
+    output_file = scenario.get("output_file") or prog.get("output_file")
+    if not output_file:
+        raise HTTPException(
+            status_code=409,
+            detail="Kịch bản chưa được render hoặc quá trình render MP4 chưa hoàn tất.",
+        )
+
+    if not SAFE_FILENAME_PATTERN.match(output_file):
+        raise HTTPException(status_code=400, detail="Tên file đầu ra không hợp lệ.")
+
+    file_path = (settings.output_dir / output_file).resolve()
+    if settings.output_dir.resolve() not in file_path.parents or not file_path.exists():
+        raise HTTPException(status_code=404, detail="File MP4 không tồn tại trên máy chủ.")
+
+    if file_path.stat().st_size < 1024:
+        raise HTTPException(status_code=500, detail="File MP4 bị lỗi hoặc rỗng.")
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="video/mp4",
+        filename=output_file,
+    )
+
+
+@router.get("/scenarios/{scenario_id}/media/{filename}", summary="Phát file âm thanh thuyết minh hoặc phụ đề SRT của trận đánh")
+async def get_scenario_media_file(scenario_id: str, filename: str) -> FileResponse:
+    _validate_safe_id(scenario_id, "scenario_id")
+    if not SAFE_FILENAME_PATTERN.match(filename):
+        raise HTTPException(status_code=400, detail="Tên file media không hợp lệ.")
+
+    scenario_dir = (settings.output_dir / f"scenario_{scenario_id}").resolve()
+    target_path = (scenario_dir / filename).resolve()
+    if scenario_dir not in target_path.parents or not target_path.exists():
         raise HTTPException(status_code=404, detail="Không tìm thấy file media.")
 
     suffix = target_path.suffix.lower()

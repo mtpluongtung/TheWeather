@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright
 
 from backend.config import settings
 from backend.database import db
-from backend.models import SceneItem
+from backend.models import SceneItem, BattleTimelineStep, ScenarioRenderRequest
 from backend.services.camera_timeline import camera_timeline_service
 from backend.services.tts import tts_service
 
@@ -463,6 +463,302 @@ class VideoRendererService:
             video_metadata=video_meta,
         )
         return db.get_project(project_id) or project
+
+    def _update_scenario_state(
+        self,
+        scenario_id: str,
+        status: str,
+        progress_pct: float,
+        step_msg: str,
+        frames_rendered: int = 0,
+        total_frames: int = 0,
+        error_message: Optional[str] = None,
+        output_file: Optional[str] = None,
+        video_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        progress = {
+            "scenario_id": scenario_id,
+            "status": status,
+            "progress_pct": round(progress_pct, 1),
+            "current_step": step_msg,
+            "frames_rendered": frames_rendered,
+            "total_frames": total_frames,
+            "error_message": error_message,
+            "output_file": output_file,
+            "download_url": f"/api/scenarios/{scenario_id}/download" if output_file else None,
+            "video_metadata": video_metadata,
+        }
+        db.update_scenario_progress(scenario_id, progress, output_file=output_file)
+
+    def _run_scenario_render_in_proactor_thread(
+        self, scenario_id: str, render_req: ScenarioRenderRequest
+    ) -> Dict[str, Any]:
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self._execute_scenario_render_pipeline(scenario_id, render_req))
+        finally:
+            loop.close()
+
+    async def render_scenario_mp4(
+        self, scenario_id: str, render_req: Optional[ScenarioRenderRequest] = None
+    ) -> Dict[str, Any]:
+        req = render_req or ScenarioRenderRequest()
+        lock_id = f"scenario_{scenario_id}"
+        if lock_id in self._active_projects:
+            raise RuntimeError("Kịch bản chiến dịch này đang được render. Vui lòng đợi tiến trình hoàn tất.")
+
+        async with self._render_lock:
+            self._active_projects.add(lock_id)
+            try:
+                curr_loop = asyncio.get_running_loop()
+                if sys.platform == "win32" and not isinstance(curr_loop, asyncio.ProactorEventLoop):
+                    logger.info("Chuyển sang ProactorEventLoop thread để render trận đánh lịch sử: %s", scenario_id)
+                    return await asyncio.to_thread(self._run_scenario_render_in_proactor_thread, scenario_id, req)
+                return await self._execute_scenario_render_pipeline(scenario_id, req)
+            except Exception as exc:
+                logger.exception("Lỗi trong quá trình render kịch bản %s", scenario_id)
+                err_msg = str(exc).strip() or exc.__class__.__name__
+                self._update_scenario_state(
+                    scenario_id,
+                    status="failed",
+                    progress_pct=0.0,
+                    step_msg=f"Lỗi render: {err_msg}",
+                    error_message=err_msg,
+                )
+                raise
+            finally:
+                self._active_projects.discard(lock_id)
+
+    async def _execute_scenario_render_pipeline(
+        self, scenario_id: str, render_req: ScenarioRenderRequest
+    ) -> Dict[str, Any]:
+        scenario = db.get_scenario(scenario_id)
+        if not scenario:
+            raise ValueError(f"Không tìm thấy kịch bản lịch sử '{scenario_id}'")
+
+        # Step 1: Synthesize voice narration & sync timeline
+        self._update_scenario_state(
+            scenario_id,
+            status="preparing_audio",
+            progress_pct=10.0,
+            step_msg="Bước 1/4: Đang tạo thuyết minh hào hùng tiếng Việt (TTS) và phụ đề cho từng giai đoạn trận đánh...",
+        )
+        steps = [BattleTimelineStep(**s) for s in scenario.get("timeline_steps", [])]
+        if not steps:
+            raise ValueError("Kịch bản không có mốc diễn biến nào để xuất video.")
+
+        tts_info = await tts_service.synthesize_scenario_steps(
+            scenario_id=scenario_id,
+            steps=steps,
+            voice_id=render_req.voice_id,
+            voice_rate=render_req.voice_rate,
+            enable_bgm=render_req.enable_bgm,
+        )
+
+        scenario["timeline_steps"] = [s.model_dump() for s in steps]
+        total_duration = float(tts_info["total_duration_sec"])
+        scenario["total_duration_sec"] = total_duration
+        scenario["audio_info"] = tts_info
+        db.save_scenario(scenario)
+
+        width, height = resolve_dimensions(render_req.aspect_ratio, render_req.resolution)
+        output_fps = render_req.fps
+        capture_fps = 20 if total_duration > 20 else output_fps
+        total_frames = max(1, int(round(total_duration * capture_fps)))
+
+        base_url = await self._detect_frontend_base_url()
+        render_url = f"{base_url}/?renderMode=military&scenarioId={scenario_id}"
+        logger.info("Mở trình duyệt render bản đồ chiến dịch tại: %s (%dx%d @ %dfps)", render_url, width, height, output_fps)
+
+        self._update_scenario_state(
+            scenario_id,
+            status="rendering_map",
+            progress_pct=25.0,
+            step_msg="Bước 2/4: Đang khởi động Chromium & nạp sa bàn 3D địa hình thực MapLibre GL JS...",
+            frames_rendered=0,
+            total_frames=total_frames,
+        )
+
+        timestamp_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S")
+        slug = slugify_filename(scenario_id)
+        ratio_slug = render_req.aspect_ratio.replace(":", "x")
+        final_mp4_name = f"military_{slug}_{ratio_slug}_{render_req.resolution}_{timestamp_str}.mp4"
+        final_mp4_path = settings.output_dir / final_mp4_name
+
+        master_audio_path = Path(tts_info["master_audio_path"])
+
+        browser_args = [
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+            "--disable-gpu-sandbox",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            f"--window-size={width},{height}",
+        ]
+        if settings.playwright_gl_backend == "swiftshader":
+            browser_args.extend(["--use-gl=angle", "--use-angle=swiftshader"])
+        else:
+            browser_args.extend(["--use-gl=angle", "--use-angle=d3d11"])
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=settings.playwright_headless,
+                args=browser_args,
+            )
+            context = await browser.new_context(
+                viewport={"width": width, "height": height},
+                device_scale_factor=1,
+            )
+            page = await context.new_page()
+
+            await page.goto(render_url, wait_until="domcontentloaded", timeout=45000)
+
+            # Wait for Military History Map to be completely loaded and ready
+            await page.wait_for_function("window.__MILITARY_MAP_READY__ === true", timeout=45000)
+
+            self._update_scenario_state(
+                scenario_id,
+                status="rendering_map",
+                progress_pct=32.0,
+                step_msg="Đang nạp trước địa hình 3D DEM và vector quân sự...",
+                frames_rendered=0,
+                total_frames=total_frames,
+            )
+
+            try:
+                await page.evaluate("window.__prewarmMilitaryMapTiles__ && window.__prewarmMilitaryMapTiles__()")
+            except Exception as exc:
+                logger.warning("Prewarm military tiles warning: %s", exc)
+
+            ffmpeg_cmd = [
+                settings.ffmpeg_binary,
+                "-y",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "mjpeg",
+                "-framerate",
+                str(capture_fps),
+                "-i",
+                "-",
+                "-i",
+                str(master_audio_path),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-r",
+                str(output_fps),
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-ar",
+                "44100",
+                "-shortest",
+                "-movflags",
+                "+faststart",
+                str(final_mp4_path),
+            ]
+
+            ffmpeg_proc = subprocess.Popen(
+                ffmpeg_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+
+            stderr_chunks: list[bytes] = []
+
+            def _drain_stderr() -> None:
+                try:
+                    if ffmpeg_proc.stderr:
+                        while True:
+                            chunk = ffmpeg_proc.stderr.read(4096)
+                            if not chunk:
+                                break
+                            stderr_chunks.append(chunk)
+                except Exception:
+                    pass
+
+            drain_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            drain_thread.start()
+
+            try:
+                for frame_idx in range(total_frames):
+                    if ffmpeg_proc.poll() is not None:
+                        err_tail = b"".join(stderr_chunks).decode("utf-8", errors="replace")[-500:]
+                        raise RuntimeError(f"FFmpeg dừng đột ngột (mã thoát {ffmpeg_proc.returncode}): {err_tail}")
+
+                    t_sec = frame_idx / float(capture_fps)
+                    await page.evaluate(f"window.__seekMilitaryHistoryFrame__({t_sec:.4f})")
+                    frame_bytes = await page.screenshot(type="jpeg", quality=90, animations="allow")
+                    if ffmpeg_proc.stdin:
+                        await asyncio.to_thread(ffmpeg_proc.stdin.write, frame_bytes)
+
+                    if frame_idx % max(1, total_frames // 20) == 0 or frame_idx == total_frames - 1:
+                        pct = 35.0 + (frame_idx + 1) / float(total_frames) * 55.0
+                        self._update_scenario_state(
+                            scenario_id,
+                            status="rendering_map",
+                            progress_pct=pct,
+                            step_msg=(
+                                f"Bước 3/4: Đang quay sa bàn 3D diễn biến trận đánh ({frame_idx + 1}/{total_frames} khung hình - "
+                                f"{t_sec:.1f}s/{total_duration:.1f}s)..."
+                            ),
+                            frames_rendered=frame_idx + 1,
+                            total_frames=total_frames,
+                        )
+            finally:
+                if ffmpeg_proc.stdin:
+                    try:
+                        ffmpeg_proc.stdin.flush()
+                        ffmpeg_proc.stdin.close()
+                    except Exception:
+                        pass
+                await context.close()
+                await browser.close()
+
+            self._update_scenario_state(
+                scenario_id,
+                status="encoding_video",
+                progress_pct=93.0,
+                step_msg="Bước 4/4: FFmpeg đang đóng gói luồng H.264 + âm thanh tài liệu và kiểm tra file MP4...",
+                frames_rendered=total_frames,
+                total_frames=total_frames,
+            )
+
+            await asyncio.to_thread(ffmpeg_proc.wait, timeout=120)
+            drain_thread.join(timeout=5)
+            if ffmpeg_proc.returncode != 0:
+                stderr_bytes = b"".join(stderr_chunks)
+                err_txt = stderr_bytes.decode("utf-8", errors="replace")[-600:]
+                raise RuntimeError(f"FFmpeg trả về mã lỗi {ffmpeg_proc.returncode}: {err_txt}")
+
+        video_meta = verify_mp4_file(final_mp4_path)
+
+        scenario["output_file"] = final_mp4_name
+        scenario["video_metadata"] = video_meta
+        self._update_scenario_state(
+            scenario_id,
+            status="completed",
+            progress_pct=100.0,
+            step_msg=f"Hoàn tất! Video sa bàn quân sự 3D ({video_meta['width']}x{video_meta['height']}, {video_meta['duration_sec']}s) sẵn sàng tải xuống.",
+            frames_rendered=total_frames,
+            total_frames=total_frames,
+            output_file=final_mp4_name,
+            video_metadata=video_meta,
+        )
+        return db.get_scenario(scenario_id) or scenario
 
 
 video_renderer_service = VideoRendererService()

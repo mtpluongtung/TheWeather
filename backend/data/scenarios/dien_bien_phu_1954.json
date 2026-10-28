@@ -1,0 +1,548 @@
+{
+  "id": "dien_bien_phu_1954",
+  "title": "CHIẾN DỊCH ĐIỆN BIÊN PHỦ (1954)",
+  "subtitle": "56 ngày đêm khoét núi ngủ hầm - Đòn quyết chiến chiến lược chấn động địa cầu",
+  "historical_date_range": "13/03/1954 - 07/05/1954",
+  "location_name": "Thung lũng Mường Thanh, Tỉnh Lai Châu (nay là Điện Biên)",
+  "center": [103.0185, 21.3885],
+  "default_zoom": 12.2,
+  "default_pitch": 55.0,
+  "default_bearing": -20.0,
+  "terrain_elevation": true,
+  "map_style": "carto_dark",
+  "factions": [
+    {
+      "id": "viet_minh",
+      "name": "Quân Đội Nhân Dân Việt Nam",
+      "short_name": "Việt Minh",
+      "color": "#e11d48",
+      "secondary_color": "#9f1239",
+      "commander": "Đại tướng Võ Nguyên Giáp",
+      "flag_icon": "🇻🇳",
+      "initial_manpower": 55000,
+      "current_manpower": 55000,
+      "infantry_count": 45000,
+      "artillery_count": 261,
+      "tanks_count": 0,
+      "aircraft_count": 0,
+      "casualties": 0
+    },
+    {
+      "id": "french_army",
+      "name": "Tập đoàn Cứ điểm Điện Biên Phủ (Pháp)",
+      "short_name": "Quân Viễn Chinh Pháp",
+      "color": "#2563eb",
+      "secondary_color": "#1e40af",
+      "commander": "Chuẩn tướng Christian de Castries",
+      "flag_icon": "🇫🇷",
+      "initial_manpower": 16200,
+      "current_manpower": 16200,
+      "infantry_count": 14000,
+      "artillery_count": 64,
+      "tanks_count": 10,
+      "aircraft_count": 14,
+      "casualties": 0
+    }
+  ],
+  "units": [
+    {
+      "id": "unit_f312",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 312 (Sư đoàn Chiến Thắng)",
+      "short_name": "F312",
+      "type": "infantry",
+      "echelon": "division",
+      "coordinates": [103.0650, 21.4150],
+      "strength_initial": 10500,
+      "strength_current": 10500,
+      "status": "active",
+      "facing_deg": 240.0
+    },
+    {
+      "id": "unit_f308",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 308 (Đại đoàn Quân Tiên Phong)",
+      "short_name": "F308",
+      "type": "infantry",
+      "echelon": "division",
+      "coordinates": [103.0050, 21.4550],
+      "strength_initial": 11000,
+      "strength_current": 11000,
+      "status": "active",
+      "facing_deg": 180.0
+    },
+    {
+      "id": "unit_f316",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 316 (Bao vây các đồi phía Đông)",
+      "short_name": "F316",
+      "type": "infantry",
+      "echelon": "division",
+      "coordinates": [103.0480, 21.3800],
+      "strength_initial": 9800,
+      "strength_current": 9800,
+      "status": "active",
+      "facing_deg": 270.0
+    },
+    {
+      "id": "unit_f304",
+      "faction_id": "viet_minh",
+      "name": "Trung đoàn 57 (Đại đoàn 304)",
+      "short_name": "E57 / F304",
+      "type": "infantry",
+      "echelon": "regiment",
+      "coordinates": [103.0420, 21.3050],
+      "strength_initial": 3200,
+      "strength_current": 3200,
+      "status": "defending",
+      "facing_deg": 350.0
+    },
+    {
+      "id": "unit_artillery_351",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn Công pháo 351 (Lựu pháo 105mm & Sơn pháo)",
+      "short_name": "F351 Pháo binh",
+      "type": "artillery",
+      "echelon": "division",
+      "coordinates": [103.0720, 21.4350],
+      "strength_initial": 4500,
+      "strength_current": 4500,
+      "status": "active",
+      "facing_deg": 230.0
+    },
+    {
+      "id": "unit_beatrice",
+      "faction_id": "french_army",
+      "name": "Cụm cứ điểm Him Lam (Béatrice - Bán lữ đoàn Lê dương 13)",
+      "short_name": "Him Lam (Béatrice)",
+      "type": "fortification",
+      "echelon": "battalion",
+      "coordinates": [103.0450, 21.4080],
+      "strength_initial": 750,
+      "strength_current": 750,
+      "status": "fortified",
+      "facing_deg": 45.0
+    },
+    {
+      "id": "unit_gabrielle",
+      "faction_id": "french_army",
+      "name": "Cụm cứ điểm Độc Lập (Gabrielle - Tiểu đoàn Algérie số 5)",
+      "short_name": "Độc Lập (Gabrielle)",
+      "type": "fortification",
+      "echelon": "battalion",
+      "coordinates": [103.0150, 21.4350],
+      "strength_initial": 800,
+      "strength_current": 800,
+      "status": "fortified",
+      "facing_deg": 0.0
+    },
+    {
+      "id": "unit_anne_marie",
+      "faction_id": "french_army",
+      "name": "Cụm cứ điểm Bản Kéo (Anne-Marie - Tiểu đoàn Thái số 3)",
+      "short_name": "Bản Kéo (Anne-Marie)",
+      "type": "fortification",
+      "echelon": "battalion",
+      "coordinates": [102.9920, 21.4120],
+      "strength_initial": 650,
+      "strength_current": 650,
+      "status": "fortified",
+      "facing_deg": 315.0
+    },
+    {
+      "id": "unit_eliane_a1",
+      "faction_id": "french_army",
+      "name": "Điểm cao A1 (Eliane 2 - Chốt chặn phía Đông)",
+      "short_name": "Đồi A1 (Eliane 2)",
+      "type": "fortification",
+      "echelon": "company",
+      "coordinates": [103.0235, 21.3850],
+      "strength_initial": 550,
+      "strength_current": 550,
+      "status": "fortified",
+      "facing_deg": 90.0
+    },
+    {
+      "id": "unit_de_castries_hq",
+      "faction_id": "french_army",
+      "name": "Sở chỉ huy Phân khu Trung tâm Mường Thanh",
+      "short_name": "Hầm De Castries",
+      "type": "headquarters",
+      "echelon": "corps",
+      "coordinates": [103.0160, 21.3840],
+      "strength_initial": 1200,
+      "strength_current": 1200,
+      "status": "defending",
+      "facing_deg": 0.0
+    },
+    {
+      "id": "unit_isabelle",
+      "faction_id": "french_army",
+      "name": "Phân khu Nam Hồng Cúm (Isabelle)",
+      "short_name": "Hồng Cúm (Isabelle)",
+      "type": "fortification",
+      "echelon": "regiment",
+      "coordinates": [103.0450, 21.3250],
+      "strength_initial": 2000,
+      "strength_current": 2000,
+      "status": "fortified",
+      "facing_deg": 180.0
+    }
+  ],
+  "arrows": [
+    {
+      "id": "arrow_f351_artillery",
+      "faction_id": "viet_minh",
+      "name": "Hỏa lực pháo binh 105mm dội lửa xuống Him Lam",
+      "path_coordinates": [
+        [103.0720, 21.4350],
+        [103.0600, 21.4220],
+        [103.0450, 21.4080]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "artillery_barrage",
+      "color": "#f59e0b",
+      "stroke_width": 4.0,
+      "start_time": 2.0,
+      "end_time": 12.0,
+      "dashed": true,
+      "head_size": 1.2,
+      "label": "Pháo binh 105mm"
+    },
+    {
+      "id": "arrow_f312_assault",
+      "faction_id": "viet_minh",
+      "name": "Mũi tiến công chính Đại đoàn 312 chọc thủng Him Lam",
+      "path_coordinates": [
+        [103.0650, 21.4150],
+        [103.0540, 21.4110],
+        [103.0450, 21.4080]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "main_thrust",
+      "color": "#e11d48",
+      "stroke_width": 6.5,
+      "start_time": 4.0,
+      "end_time": 14.0,
+      "dashed": false,
+      "head_size": 1.8,
+      "label": "Đại đoàn 312 xung kích"
+    },
+    {
+      "id": "arrow_f308_gabrielle",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 308 đánh giáp công Cứ điểm Độc Lập",
+      "path_coordinates": [
+        [103.0050, 21.4550],
+        [103.0100, 21.4440],
+        [103.0150, 21.4350]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "main_thrust",
+      "color": "#e11d48",
+      "stroke_width": 6.0,
+      "start_time": 15.0,
+      "end_time": 25.0,
+      "dashed": false,
+      "head_size": 1.8,
+      "label": "F308 công kích Độc Lập"
+    },
+    {
+      "id": "arrow_trench_encirclement_east",
+      "faction_id": "viet_minh",
+      "name": "Giao thông hào siết chặt sân bay từ phía Đông",
+      "path_coordinates": [
+        [103.0480, 21.3800],
+        [103.0320, 21.3900],
+        [103.0150, 21.3950]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "encirclement",
+      "color": "#ef4444",
+      "stroke_width": 4.5,
+      "start_time": 27.0,
+      "end_time": 39.0,
+      "dashed": true,
+      "head_size": 1.4,
+      "label": "Vòng vây chiến hào đào lấn"
+    },
+    {
+      "id": "arrow_trench_encirclement_west",
+      "faction_id": "viet_minh",
+      "name": "Chiến hào F308 chia cắt sân bay Mường Thanh từ phía Tây",
+      "path_coordinates": [
+        [102.9920, 21.4050],
+        [103.0010, 21.3950],
+        [103.0075, 21.3970]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "encirclement",
+      "color": "#ef4444",
+      "stroke_width": 4.5,
+      "start_time": 28.0,
+      "end_time": 39.0,
+      "dashed": true,
+      "head_size": 1.4,
+      "label": "Cắt đứt đường tiếp tế hàng không"
+    },
+    {
+      "id": "arrow_final_assault_east",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 316 đánh bộc phá đồi A1 và thọc sâu Sở chỉ huy",
+      "path_coordinates": [
+        [103.0235, 21.3850],
+        [103.0190, 21.3845],
+        [103.0160, 21.3840]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "main_thrust",
+      "color": "#e11d48",
+      "stroke_width": 7.0,
+      "start_time": 41.0,
+      "end_time": 54.0,
+      "dashed": false,
+      "head_size": 2.0,
+      "label": "Tổng công kích sở chỉ huy"
+    },
+    {
+      "id": "arrow_final_assault_north",
+      "faction_id": "viet_minh",
+      "name": "Đại đoàn 312 vượt cầu Mường Thanh áp sát hầm De Castries",
+      "path_coordinates": [
+        [103.0200, 21.3980],
+        [103.0175, 21.3900],
+        [103.0160, 21.3840]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "main_thrust",
+      "color": "#e11d48",
+      "stroke_width": 7.0,
+      "start_time": 42.0,
+      "end_time": 54.0,
+      "dashed": false,
+      "head_size": 2.0,
+      "label": "Bắt sống bộ chỉ huy Pháp"
+    }
+  ],
+  "territories": [
+    {
+      "id": "territory_french_initial",
+      "faction_id": "french_army",
+      "name": "Toàn bộ Tập đoàn Cứ điểm Điện Biên Phủ ban đầu",
+      "polygon_coordinates": [
+        [102.9850, 21.4420],
+        [103.0250, 21.4480],
+        [103.0550, 21.4150],
+        [103.0580, 21.3750],
+        [103.0520, 21.3150],
+        [103.0350, 21.3150],
+        [103.0020, 21.3650],
+        [102.9800, 21.4100],
+        [102.9850, 21.4420]
+      ],
+      "color": "#2563eb",
+      "fill_opacity": 0.22,
+      "stroke_color": "#3b82f6",
+      "stroke_width": 2.0,
+      "dashed_stroke": false,
+      "active_time_start": 0.0,
+      "active_time_end": 14.5
+    },
+    {
+      "id": "territory_french_encircled",
+      "faction_id": "french_army",
+      "name": "Vòng vây siết chặt: Khu vực trung tâm Mường Thanh bị cô lập",
+      "polygon_coordinates": [
+        [103.0020, 21.4050],
+        [103.0250, 21.4020],
+        [103.0280, 21.3820],
+        [103.0220, 21.3750],
+        [103.0050, 21.3780],
+        [103.0020, 21.4050]
+      ],
+      "color": "#2563eb",
+      "fill_opacity": 0.28,
+      "stroke_color": "#60a5fa",
+      "stroke_width": 2.5,
+      "dashed_stroke": true,
+      "active_time_start": 14.5,
+      "active_time_end": 42.0
+    },
+    {
+      "id": "territory_french_collapsed",
+      "faction_id": "french_army",
+      "name": "Tập đoàn cứ điểm sụp đổ hoàn toàn",
+      "polygon_coordinates": [
+        [103.0130, 21.3860],
+        [103.0180, 21.3860],
+        [103.0180, 21.3820],
+        [103.0130, 21.3820],
+        [103.0130, 21.3860]
+      ],
+      "color": "#94a3b8",
+      "fill_opacity": 0.40,
+      "stroke_color": "#cbd5e1",
+      "stroke_width": 3.0,
+      "dashed_stroke": false,
+      "active_time_start": 42.0,
+      "active_time_end": 60.0
+    }
+  ],
+  "combat_events": [
+    {
+      "id": "combat_him_lam_fire",
+      "name": "Bão lửa pháo binh công phá Him Lam",
+      "coordinates": [103.0450, 21.4080],
+      "event_type": "artillery_strike",
+      "start_time": 2.5,
+      "end_time": 13.0,
+      "intensity": 5,
+      "description": "40 khẩu pháo 105mm và súng cối đồng loạt khai hỏa, phá hủy công sự kiên cố của Pháp."
+    },
+    {
+      "id": "combat_gabrielle_clash",
+      "name": "Giao tranh ác liệt tại đồi Độc Lập",
+      "coordinates": [103.0150, 21.4350],
+      "event_type": "clash",
+      "start_time": 16.0,
+      "end_time": 24.0,
+      "intensity": 4,
+      "description": "Đại đoàn 308 và 312 phối hợp diệt gọn Tiểu đoàn tinh nhuệ Algérie số 5."
+    },
+    {
+      "id": "combat_a1_mine_blast",
+      "name": "Vụ nổ bộc phá gần 1 tấn tại đồi A1",
+      "coordinates": [103.0235, 21.3850],
+      "event_type": "breakthrough",
+      "start_time": 42.0,
+      "end_time": 50.0,
+      "intensity": 5,
+      "description": "Đường hầm bộc phá 960kg phát nổ xé toạc hầm ngầm cố thủ, mở đường cho quân ta xung phong."
+    },
+    {
+      "id": "combat_de_castries_surrender",
+      "name": "Lá cờ Quyết chiến Quyết thắng tung bay trên nóc hầm De Castries",
+      "coordinates": [103.0160, 21.3840],
+      "event_type": "breakthrough",
+      "start_time": 49.0,
+      "end_time": 58.0,
+      "intensity": 3,
+      "description": "17h30 ngày 7/5/1954: Chuẩn tướng De Castries cùng toàn bộ ban tham mưu Pháp đầu hàng."
+    }
+  ],
+  "timeline_steps": [
+    {
+      "step_id": "step_01_opening",
+      "step_index": 0,
+      "timestamp_label": "13/03/1954 - 17:05",
+      "title": "Phát súng mở màn: Tiêu diệt cứ điểm Him Lam (Béatrice)",
+      "phase_name": "Đợt 1: Đột phá cánh bắc & đông bắc",
+      "tactical_objective": "Hạ gục cứ điểm kiên cố nhất bảo vệ phía đông bắc, mở then chốt tiến vào thung lũng Mường Thanh.",
+      "camera": {
+        "center": [103.0450, 21.4080],
+        "zoom": 13.5,
+        "pitch": 58.0,
+        "bearing": -35.0,
+        "duration_sec": 14.0,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 0.0,
+      "end_time": 14.5,
+      "duration_sec": 14.5,
+      "narration_text": "17 giờ 5 phút ngày 13 tháng 3 năm 1954, hàng chục khẩu trọng pháo 105 ly của Đại đoàn 351 bất ngờ gầm vang từ các sườn núi cao bao bọc thung lũng, trút bão lửa xuống cứ điểm Him Lam. Mũi xung kích Đại đoàn 312 lập tức mở cửa đột phá, tiêu diệt hoàn toàn cứ điểm kiên cố nhất của Pháp sau vài giờ kịch chiến.",
+      "active_unit_ids": ["unit_f351_artillery", "unit_f312", "unit_beatrice"],
+      "active_arrow_ids": ["arrow_f351_artillery", "arrow_f312_assault"],
+      "active_combat_ids": ["combat_him_lam_fire"],
+      "active_territory_ids": ["territory_french_initial"],
+      "factions_status": {
+        "viet_minh": { "current_manpower": 54800, "casualties": 200 },
+        "french_army": { "current_manpower": 15450, "casualties": 750 }
+      }
+    },
+    {
+      "step_id": "step_02_north_collapse",
+      "step_index": 1,
+      "timestamp_label": "15/03 - 17/03/1954",
+      "title": "Cánh cửa phía Bắc sụp đổ: Đồi Độc Lập & Bản Kéo",
+      "phase_name": "Đợt 1: Xóa sổ phân khu Bắc",
+      "tactical_objective": "Triệt hạ Cứ điểm Độc Lập và Bản Kéo, khống chế hoàn toàn không vực phía bắc sân bay Mường Thanh.",
+      "camera": {
+        "center": [103.0080, 21.4280],
+        "zoom": 13.2,
+        "pitch": 52.0,
+        "bearing": 15.0,
+        "duration_sec": 12.0,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 14.5,
+      "end_time": 26.5,
+      "duration_sec": 12.0,
+      "narration_text": "Thừa thắng xông lên, rạng sáng 15 tháng 3, Đại đoàn 308 phối hợp cùng 312 công kích đồi Độc Lập. Dù đối phương phản kích bằng xe tăng và pháo binh, quân ta làm chủ trận địa. Ngày 17 tháng 3, binh lính đồn trú tại Bản Kéo hoảng loạn đầu hàng. Toàn bộ cửa ngõ phía bắc của tập đoàn cứ điểm bị xóa sổ.",
+      "active_unit_ids": ["unit_f308", "unit_gabrielle", "unit_anne_marie"],
+      "active_arrow_ids": ["arrow_f308_gabrielle"],
+      "active_combat_ids": ["combat_gabrielle_clash"],
+      "active_territory_ids": ["territory_french_initial"],
+      "factions_status": {
+        "viet_minh": { "current_manpower": 54300, "casualties": 700 },
+        "french_army": { "current_manpower": 14000, "casualties": 2200 }
+      }
+    },
+    {
+      "step_id": "step_03_siege_trenches",
+      "step_index": 2,
+      "timestamp_label": "30/03 - 25/04/1954",
+      "title": "Chiến thuật vây lấn: Siết chặt vòng vây chiến hào",
+      "phase_name": "Đợt 2: Đào hào bao vây & cắt đứt sân bay",
+      "tactical_objective": "Đào hàng trăm km chiến hào siết chặt sân bay, triệt phá hoàn toàn huyết mạch tiếp tế đường không duy nhất của Pháp.",
+      "camera": {
+        "center": [103.0180, 21.3950],
+        "zoom": 13.8,
+        "pitch": 62.0,
+        "bearing": -10.0,
+        "duration_sec": 14.5,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 26.5,
+      "end_time": 41.0,
+      "duration_sec": 14.5,
+      "narration_text": "Bước sang giai đoạn 2, hàng vạn chiến sĩ ngày đêm đào chiến hào vươn dài hàng trăm cây số như những gọng kìm khổng lồ thắt chặt quanh phân khu Mường Thanh. Đường băng sân bay bị pháo cao xạ khống chế gắt gao, máy bay tiếp tế của Pháp buộc phải thả dù từ độ cao lớn, khiến phần lớn lương thực và đạn dược rơi vào tay quân ta.",
+      "active_unit_ids": ["unit_f312", "unit_f308", "unit_f316", "unit_de_castries_hq"],
+      "active_arrow_ids": ["arrow_trench_encirclement_east", "arrow_trench_encirclement_west"],
+      "active_combat_ids": [],
+      "active_territory_ids": ["territory_french_encircled"],
+      "factions_status": {
+        "viet_minh": { "current_manpower": 52500, "casualties": 2500 },
+        "french_army": { "current_manpower": 11200, "casualties": 5000 }
+      }
+    },
+    {
+      "step_id": "step_04_decisive_victory",
+      "step_index": 3,
+      "timestamp_label": "06/05 - 07/05/1954 - 17:30",
+      "title": "Tổng công kích: Khối bộc phá Đồi A1 và Đại thắng Mường Thanh",
+      "phase_name": "Đợt 3: Tiêu diệt toàn bộ tập đoàn cứ điểm",
+      "tactical_objective": "Bộc phá hầm ngầm Đồi A1, vượt cầu Mường Thanh thọc thẳng vào sở chỉ huy, bắt sống tướng De Castries.",
+      "camera": {
+        "center": [103.0160, 21.3840],
+        "zoom": 14.5,
+        "pitch": 50.0,
+        "bearing": 0.0,
+        "duration_sec": 16.5,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 41.0,
+      "end_time": 57.5,
+      "duration_sec": 16.5,
+      "narration_text": "Đêm 6 tháng 5, khối bộc phá gần một tấn phát nổ làm rung chuyển đồi A1, đánh sập hầm ngầm cố thủ cuối cùng của đối phương. Chiều 7 tháng 5, lệnh tổng công kích phát ra trên toàn mặt trận. Các mũi xung kích ào ạt vượt cầu Mường Thanh tiến thẳng vào sở chỉ huy. Đúng 17 giờ 30, lá cờ Quyết chiến Quyết thắng tung bay kiêu hãnh trên nóc hầm De Castries, kết thúc toàn thắng 56 ngày đêm lịch sử.",
+      "active_unit_ids": ["unit_f316", "unit_f312", "unit_eliane_a1", "unit_de_castries_hq"],
+      "active_arrow_ids": ["arrow_final_assault_east", "arrow_final_assault_north"],
+      "active_combat_ids": ["combat_a1_mine_blast", "combat_de_castries_surrender"],
+      "active_territory_ids": ["territory_french_collapsed"],
+      "factions_status": {
+        "viet_minh": { "current_manpower": 51000, "casualties": 4000 },
+        "french_army": { "current_manpower": 0, "casualties": 16200 }
+      }
+    }
+  ],
+  "total_duration_sec": 57.5
+}

@@ -1,282 +1,174 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import maplibregl from 'maplibre-gl';
 import {
   Play,
   Pause,
   RotateCcw,
   Film,
   Download,
-  RefreshCw,
-  Compass,
   Volume2,
-  FileText,
-  Sliders,
-  CheckCircle2,
-  AlertTriangle,
-  Globe,
+  VolumeX,
+  Compass,
+  Shield,
+  Crosshair,
+  ListOrdered,
   Layers,
-  Mountain,
-  ArrowUp,
-  ArrowDown,
-  Trash2,
-  Plus,
-  ExternalLink,
+  ChevronRight,
+  ChevronLeft,
+  X,
   Sparkles,
-  Video,
+  Swords,
+  Maximize2,
 } from 'lucide-react';
 import { api } from './services/api';
 import {
-  CameraPreset,
-  CameraSpec,
-  HealthResponse,
-  PlaceMeta,
-  ProjectData,
-  RenderProgress,
-  SceneItem,
-  WeatherForecastItem,
-  WeatherOverlayType,
-} from './types/weathercast';
-import { RealMapCanvas } from './components/RealMapCanvas';
-import { IntradayWeatherChart } from './components/IntradayWeatherChart';
-import { formatTimeMMSS } from './services/cameraMath';
+  BattleScenario,
+  BattleTimelineStep,
+  MilitaryUnit,
+  ScenarioRenderProgress,
+} from './types/military';
+import { TacticalMilitaryCanvas } from './components/TacticalMilitaryCanvas';
+import { MilitaryDocumentaryHUD } from './components/MilitaryDocumentaryHUD';
+import {
+  evaluateTimelineAtTime,
+  InterpolatedTimelineState,
+} from './services/militaryTimelineEngine';
+
+function formatMMSS(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 export const App: React.FC = () => {
   const urlParams = new URLSearchParams(window.location.search);
-  const isRenderMode = urlParams.get('renderMode') === '1';
-  const renderProjectIdParam = urlParams.get('projectId');
+  const isRenderMode =
+    urlParams.get('renderMode') === '1' || urlParams.get('renderMode') === 'military';
+  const urlScenarioId = urlParams.get('scenarioId') || 'dien_bien_phu_1954';
 
-  // Catalog & System State
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [presets, setPresets] = useState<CameraPreset[]>([]);
-  const [places, setPlaces] = useState<PlaceMeta[]>([]);
-  const [adminBoundaries, setAdminBoundaries] = useState<GeoJSON.FeatureCollection | null>(null);
-  const [highlightedPlaceIdOverride, setHighlightedPlaceIdOverride] = useState<string | null>(null);
-  const [adminSchemaVersion, setAdminSchemaVersion] = useState<string>('2025.2-VN-ADMIN');
-  const [radarTileUrl, setRadarTileUrl] = useState<string | null>(null);
+  // Scenario list & active scenario
+  const [availableScenarios, setAvailableScenarios] = useState<any[]>([]);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(urlScenarioId);
+  const [scenario, setScenario] = useState<BattleScenario | null>(null);
+  const [isLoadingScenario, setIsLoadingScenario] = useState<boolean>(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // Project & Configuration State
-  const [project, setProject] = useState<ProjectData | null>(null);
-  const [projectName, setProjectName] = useState('Bản tin Dự báo Thời tiết Việt Nam');
-  const [scope, setScope] = useState<'nationwide' | 'region' | 'custom_places'>('nationwide');
-  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([
-    'ha_noi',
-    'thai_nguyen',
-    'bac_ninh',
-    'da_nang',
-    'tp_hcm',
-  ]);
-  const [placeToAdd, setPlaceToAdd] = useState<string>('lam_dong');
-  const [forecastDate, setForecastDate] = useState<string>(() => {
-    const now = new Date();
-    return now.toISOString().split('T')[0];
-  });
-  const [targetDurationSec, setTargetDurationSec] = useState<number>(45);
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
-  const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
-  const [voiceId, setVoiceId] = useState<string>('vi-VN-HoaiMyNeural');
-  const [voiceRate, setVoiceRate] = useState<string>('+0%');
-  const [tone, setTone] = useState<'broadcast' | 'concise' | 'friendly' | 'detailed'>('broadcast');
-  const [cameraStyle, setCameraStyle] = useState<
-    'cinematic_fly' | 'broadcast_smooth' | 'dynamic_orbit' | 'direct_pan'
-  >('cinematic_fly');
-  const [mapProviderId, setMapProviderId] = useState<string>('openfreemap_liberty');
-  const [enable3dTerrain, setEnable3dTerrain] = useState<boolean>(true);
-  const [enableSubtitles, setEnableSubtitles] = useState<boolean>(true);
-  const [enableBgm, setEnableBgm] = useState<boolean>(true);
-  const [activeOverlayOverride, setActiveOverlayOverride] = useState<WeatherOverlayType | 'auto'>(
-    'auto'
-  );
-
-  // Weather, Scenes & Playback State
-  const [forecasts, setForecasts] = useState<WeatherForecastItem[]>([]);
-  const [scenes, setScenes] = useState<SceneItem[]>([]);
-  const [scriptDirty, setScriptDirty] = useState<boolean>(false);
+  // Playback & Timeline State
   const [currentTimeSec, setCurrentTimeSec] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [cameraTelemetry, setCameraTelemetry] = useState<CameraSpec>({
-    center: [106.8, 16.2],
-    zoom: 5.3,
-    pitch: 35,
-    bearing: -8,
-  });
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  // Loading, Error & Render Progress State
-  const [isLoadingWeather, setIsLoadingWeather] = useState<boolean>(false);
-  const [isPreparingPreview, setIsPreparingPreview] = useState<boolean>(false);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const [statusBanner, setStatusBanner] = useState<string | null>(null);
-  const [renderProgress, setRenderProgress] = useState<RenderProgress | null>(null);
-  const [activeBottomTab, setActiveBottomTab] = useState<'timeline' | 'script' | 'weather' | 'video'>(
-    'script'
-  );
+  // Studio UI state
+  const [viewMode, setViewMode] = useState<'documentary' | 'tactical'>('documentary');
+  const [is3DEnabled, setIs3DEnabled] = useState<boolean>(true);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState<boolean>(false);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState<boolean>(false);
+  const [renderModalOpen, setRenderModalOpen] = useState<boolean>(false);
 
-  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  // Render modal configuration
+  const [renderResolution, setRenderResolution] = useState<'720p' | '1080p'>('720p');
+  const [renderAspectRatio, setRenderAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
+  const [renderFps, setRenderFps] = useState<number>(30);
+  const [renderVoiceId, setRenderVoiceId] = useState<string>('vi-VN-NamMinhNeural');
+  const [renderProgress, setRenderProgress] = useState<ScenarioRenderProgress | null>(null);
+  const [isStartingRender, setIsStartingRender] = useState<boolean>(false);
+
+  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const lastFrameTsRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number | null>(null);
+  const timelineStateRef = useRef<InterpolatedTimelineState | null>(null);
 
-  const totalDurationSec =
-    scenes.length > 0 ? scenes[scenes.length - 1].end_time : targetDurationSec;
-
-  // 1. Initial Bootstrap: Load Health, Places, Radar, and either RenderMode project or initial project
+  // 1. Fetch available scenarios and load current scenario
   useEffect(() => {
-    let cancelled = false;
-
-    async function bootstrap() {
+    async function loadScenariosList() {
       try {
-        setIsLoadingWeather(true);
-        setApiError(null);
-
-        const [healthRes, placesRes, boundariesRes, radarRes] = await Promise.all([
-          api.getHealth(),
-          api.getPlaces(),
-          api.getBoundaries().catch(() => ({
-            type: 'FeatureCollection' as const,
-            features: [],
-          })),
-          api.getRadarMetadata().catch(() => ({
-            available: false,
-            radar_tile_url: null,
-            satellite_tile_url: null,
-            attribution: '',
-          })),
-        ]);
-
-        if (cancelled) return;
-        setHealth(healthRes);
-        setPresets(placesRes.camera_presets || []);
-        setPlaces(placesRes.places || []);
-        setAdminBoundaries(boundariesRes);
-        setAdminSchemaVersion(placesRes.schema_version || '2025.2-VN-ADMIN');
-        if (radarRes.radar_tile_url) {
-          setRadarTileUrl(radarRes.radar_tile_url);
-        }
-
-        if (isRenderMode && renderProjectIdParam) {
-          const loadedProj = await api.getProject(renderProjectIdParam);
-          if (cancelled) return;
-          applyProjectToState(loadedProj);
-          return;
-        }
-
-        // Normal Studio Mode: Create an initial project with real weather data for Ha Noi, Thai Nguyen, Bac Ninh, Da Nang, TP.HCM
-        const initialProj = await api.createProject({
-          name: 'Bản tin Dự báo Thời tiết Việt Nam',
-          scope: 'nationwide',
-          place_ids: ['ha_noi', 'thai_nguyen', 'bac_ninh', 'da_nang', 'tp_hcm'],
-          forecast_date: forecastDate,
-          target_duration_sec: 45,
-          aspect_ratio: '16:9',
-          resolution: '720p',
-          voice_id: 'vi-VN-HoaiMyNeural',
-          voice_rate: '+0%',
-          tone: 'broadcast',
-          camera_style: 'cinematic_fly',
-          map_provider: healthRes.map_config.default_provider || 'openfreemap_liberty',
-          enable_3d_terrain: healthRes.map_config.enable_real_3d_terrain,
-          enable_subtitles: true,
-          enable_bgm: true,
-        });
-        if (cancelled) return;
-        applyProjectToState(initialProj);
-      } catch (err: any) {
-        if (!cancelled) {
-          setApiError(err?.message || 'Không thể kết nối tới Backend API.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingWeather(false);
-        }
+        const res = await api.listScenarios();
+        setAvailableScenarios(res.scenarios || []);
+      } catch (err) {
+        console.warn('Could not load scenario list:', err);
       }
     }
-
-    bootstrap();
-    return () => {
-      cancelled = true;
-    };
+    loadScenariosList();
   }, []);
 
-  const applyProjectToState = (proj: ProjectData) => {
-    setProject(proj);
-    setProjectName(proj.name);
-    setScope(proj.scope);
-    setSelectedPlaceIds(proj.place_ids);
-    setForecastDate(proj.forecast_date);
-    setTargetDurationSec(proj.target_duration_sec);
-    setAspectRatio(proj.aspect_ratio);
-    setResolution(proj.resolution);
-    setVoiceId(proj.voice_id);
-    setVoiceRate(proj.voice_rate);
-    setTone(proj.tone);
-    setCameraStyle(proj.camera_style);
-    setMapProviderId(proj.map_provider || 'openfreemap_liberty');
-    setEnable3dTerrain(proj.enable_3d_terrain);
-    setEnableSubtitles(proj.enable_subtitles);
-    setEnableBgm(proj.enable_bgm);
-    setScenes(proj.scenes || []);
-    setRenderProgress(proj.progress || null);
-    setScriptDirty(false);
-
-    // Extract forecasts from scenes
-    const extractedForecasts: WeatherForecastItem[] = [];
-    const seen = new Set<string>();
-    for (const sc of proj.scenes || []) {
-      if (sc.weather_data && !seen.has(sc.weather_data.place_id)) {
-        seen.add(sc.weather_data.place_id);
-        extractedForecasts.push(sc.weather_data);
+  useEffect(() => {
+    async function loadScenarioData(id: string) {
+      try {
+        setIsLoadingScenario(true);
+        setApiError(null);
+        const data = await api.getScenario(id);
+        setScenario(data);
+        setCurrentTimeSec(0);
+        setIsPlaying(false);
+      } catch (err: any) {
+        setApiError(err?.message || `Lỗi nạp kịch bản ${id}`);
+      } finally {
+        setIsLoadingScenario(false);
       }
     }
-    if (extractedForecasts.length > 0) {
-      setForecasts(extractedForecasts);
-    }
-  };
+    loadScenarioData(selectedScenarioId);
+  }, [selectedScenarioId]);
 
-  // 2. Animation Loop for Browser Camera & Audio Preview
+  // Compute interpolated timeline state at currentTimeSec
+  const timelineState = scenario
+    ? evaluateTimelineAtTime(scenario, currentTimeSec)
+    : null;
+  timelineStateRef.current = timelineState;
+
+  // 2. Playwright / Puppeteer Bridge for frame-by-frame rendering
   useEffect(() => {
-    if (!isPlaying) {
+    if (!scenario) return;
+
+    // Expose frame seeking hook
+    (window as any).__seekMilitaryHistoryFrame__ = (timeSec: number) => {
+      setCurrentTimeSec(timeSec);
+      return true;
+    };
+
+    // Pre-warm function
+    (window as any).__prewarmMilitaryMapTiles__ = () => {
+      return true;
+    };
+
+    // Mark as ready when scenario loaded
+    (window as any).__MILITARY_MAP_READY__ = true;
+    // Also support legacy variable name if renderer checks it
+    (window as any).__WEATHERCAST_READY__ = true;
+    (window as any).__seekWeatherCastFrame__ = (t: number) => {
+      setCurrentTimeSec(t);
+      return true;
+    };
+  }, [scenario]);
+
+  // 3. Playback Loop
+  useEffect(() => {
+    if (!isPlaying || !scenario) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      lastFrameTsRef.current = null;
+      lastTimeRef.current = null;
       if (audioRef.current && !audioRef.current.paused) {
         audioRef.current.pause();
       }
       return;
     }
 
-    const hasMasterAudio = Boolean(project?.audio_info?.master_audio_url);
-    if (hasMasterAudio && audioRef.current) {
-      if (Math.abs(audioRef.current.currentTime - currentTimeSec) > 0.35) {
-        audioRef.current.currentTime = currentTimeSec;
-      }
-      audioRef.current.play().catch(() => {
-        // Autoplay fallback if browser blocks audio
-      });
-    }
+    const maxDuration = scenario.total_duration_sec || 60.0;
 
     const tick = (nowMs: number) => {
-      if (lastFrameTsRef.current === null) {
-        lastFrameTsRef.current = nowMs;
+      if (lastTimeRef.current === null) {
+        lastTimeRef.current = nowMs;
       }
-      const deltaSec = (nowMs - lastFrameTsRef.current) / 1000;
-      lastFrameTsRef.current = nowMs;
+      const deltaSec = ((nowMs - lastTimeRef.current) / 1000) * playbackSpeed;
+      lastTimeRef.current = nowMs;
 
-      if (hasMasterAudio && audioRef.current && !audioRef.current.paused) {
-        const audioTime = audioRef.current.currentTime;
-        setCurrentTimeSec(audioTime);
-        if (audioTime >= totalDurationSec) {
+      setCurrentTimeSec((prev) => {
+        const next = prev + deltaSec;
+        if (next >= maxDuration) {
           setIsPlaying(false);
-          setCurrentTimeSec(0);
-          return;
+          return maxDuration;
         }
-      } else {
-        setCurrentTimeSec((prev) => {
-          const next = prev + deltaSec;
-          if (next >= totalDurationSec) {
-            setIsPlaying(false);
-            return 0;
-          }
-          return next;
-        });
-      }
+        return next;
+      });
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -285,1198 +177,643 @@ export const App: React.FC = () => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, totalDurationSec, project?.audio_info?.master_audio_url]);
+  }, [isPlaying, playbackSpeed, scenario]);
 
-  // 3. Poll Render Progress when a render job is active
+  // 4. Poll render progress when modal is open and status is active
   useEffect(() => {
-    if (!project) return;
-    const status = renderProgress?.status;
-    if (
-      status !== 'preparing_audio' &&
-      status !== 'syncing_timeline' &&
-      status !== 'rendering_map' &&
-      status !== 'encoding_video'
-    ) {
+    if (!renderProgress || renderProgress.status === 'completed' || renderProgress.status === 'failed') {
       return;
     }
 
     const timer = setInterval(async () => {
       try {
-        const prog = await api.getRenderProgress(project.id);
+        const prog = await api.getScenarioRenderProgress(selectedScenarioId);
         setRenderProgress(prog);
-        if (prog.status === 'completed') {
-          const refreshed = await api.getProject(project.id);
-          applyProjectToState(refreshed);
-          setStatusBanner('Xuất video MP4 hoàn tất! Bạn có thể xem trước hoặc tải xuống ngay.');
-          setActiveBottomTab('video');
-        } else if (prog.status === 'failed') {
-          setApiError(prog.error_message || 'Quá trình render video MP4 gặp lỗi.');
-        }
       } catch (err) {
-        console.warn('Progress poll error:', err);
+        console.warn('Polling error:', err);
       }
     }, 1500);
 
     return () => clearInterval(timer);
-  }, [project?.id, renderProgress?.status]);
+  }, [renderProgress?.status, selectedScenarioId]);
 
   // Handlers
-  const handleSelectScope = (newScope: 'nationwide' | 'region' | 'custom_places') => {
-    setScope(newScope);
-    if (newScope === 'nationwide') {
-      setSelectedPlaceIds(['ha_noi', 'bac_ninh', 'da_nang', 'lam_dong', 'tp_hcm', 'can_tho']);
-    } else if (newScope === 'region') {
-      setSelectedPlaceIds(['ha_noi', 'bac_ninh', 'hai_phong', 'quang_ninh', 'lao_cai']);
+  const handleTogglePlay = () => {
+    if (!scenario) return;
+    if (currentTimeSec >= (scenario.total_duration_sec || 60.0)) {
+      setCurrentTimeSec(0);
     }
+    setIsPlaying((prev) => !prev);
   };
 
-  const handleFlyToPresetOrPlace = async (target: {
-    id: string;
-    name: string;
-    lat: number;
-    lon: number;
-    zoom: number;
-    pitch: number;
-    bearing: number;
-    isPlace?: boolean;
-  }) => {
+  const handleStepJump = (stepIndex: number) => {
+    if (!scenario || !scenario.timeline_steps[stepIndex]) return;
+    const step = scenario.timeline_steps[stepIndex];
     setIsPlaying(false);
-    setHighlightedPlaceIdOverride(target.id);
-    const map = mapInstanceRef.current;
-    if (map) {
-      map.flyTo({
-        center: [target.lon, target.lat],
-        zoom: target.zoom,
-        pitch: target.pitch,
-        bearing: target.bearing,
-        duration: 2000,
-        essential: true,
-      });
-    }
-
-    if (target.isPlace) {
-      try {
-        setIsLoadingWeather(true);
-        setApiError(null);
-        const res = await api.getForecast([target.id], forecastDate);
-        if (res.items && res.items.length > 0) {
-          const newItem = res.items[0];
-          setForecasts((prev) => {
-            const exists = prev.some((p) => p.place_id === newItem.place_id);
-            if (exists) {
-              return prev.map((p) => (p.place_id === newItem.place_id ? newItem : p));
-            }
-            return [...prev, newItem];
-          });
-          setStatusBanner(
-            `Đã tải dữ liệu thời tiết thực tế cho ${newItem.place_name}: ${newItem.temperature_c}°C (${newItem.weather_description_vi})`
-          );
-        }
-      } catch (err: any) {
-        setApiError(err?.message || 'Lỗi khi lấy dự báo thời tiết từ Open-Meteo.');
-      } finally {
-        setIsLoadingWeather(false);
-      }
-    }
+    setCurrentTimeSec(step.start_time);
   };
 
-  const handleAddPlace = () => {
-    if (!placeToAdd) return;
-    if (!selectedPlaceIds.includes(placeToAdd)) {
-      setSelectedPlaceIds([...selectedPlaceIds, placeToAdd]);
-    }
-  };
-
-  const handleRemovePlace = (id: string) => {
-    if (selectedPlaceIds.length <= 1) {
-      setApiError('Cần chọn ít nhất 1 địa điểm trong kịch bản.');
-      return;
-    }
-    setSelectedPlaceIds(selectedPlaceIds.filter((p) => p !== id));
-  };
-
-  const handleMovePlace = (idx: number, dir: -1 | 1) => {
-    const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= selectedPlaceIds.length) return;
-    const copy = [...selectedPlaceIds];
-    const temp = copy[idx];
-    copy[idx] = copy[targetIdx];
-    copy[targetIdx] = temp;
-    setSelectedPlaceIds(copy);
-  };
-
-  const handleGenerateNewProject = async () => {
-    try {
-      setIsPlaying(false);
-      setIsLoadingWeather(true);
-      setApiError(null);
-      setStatusBanner('Đang lấy dữ liệu thời tiết mới nhất từ Open-Meteo và sinh kịch bản...');
-
-      const created = await api.createProject({
-        name: projectName,
-        scope,
-        place_ids: selectedPlaceIds,
-        forecast_date: forecastDate,
-        target_duration_sec: targetDurationSec,
-        aspect_ratio: aspectRatio,
-        resolution,
-        voice_id: voiceId,
-        voice_rate: voiceRate,
-        tone,
-        camera_style: cameraStyle,
-        map_provider: mapProviderId,
-        enable_3d_terrain: enable3dTerrain,
-        enable_subtitles: enableSubtitles,
-        enable_bgm: enableBgm,
-      });
-
-      applyProjectToState(created);
-      setCurrentTimeSec(0);
-      setStatusBanner(
-        `Đã cập nhật dữ liệu thời tiết thực tế và tạo kịch bản (${created.scenes.length} phân cảnh).`
-      );
-    } catch (err: any) {
-      setApiError(err?.message || 'Lỗi khi tạo dự án mới.');
-    } finally {
-      setIsLoadingWeather(false);
-    }
-  };
-
-  const handleSceneNarrationEdit = (sceneIndex: number, newText: string) => {
-    setScenes((prev) =>
-      prev.map((sc, idx) =>
-        idx === sceneIndex
-          ? {
-              ...sc,
-              narration: newText,
-              subtitle: newText,
-            }
-          : sc
-      )
+  const handleNextStep = () => {
+    if (!scenario || !timelineState) return;
+    const nextIdx = Math.min(
+      scenario.timeline_steps.length - 1,
+      timelineState.currentStepIndex + 1
     );
-    setScriptDirty(true);
+    handleStepJump(nextIdx);
   };
 
-  const handleSaveEditedScript = async () => {
-    if (!project) return;
+  const handlePrevStep = () => {
+    if (!scenario || !timelineState) return;
+    const prevIdx = Math.max(0, timelineState.currentStepIndex - 1);
+    handleStepJump(prevIdx);
+  };
+
+  const handleResetTimeline = () => {
+    setIsPlaying(false);
+    setCurrentTimeSec(0);
+  };
+
+  const handleStartRender = async () => {
+    if (!scenario) return;
     try {
-      setIsLoadingWeather(true);
+      setIsStartingRender(true);
       setApiError(null);
-      const updated = await api.updateProject(project.id, {
-        name: projectName,
-        aspect_ratio: aspectRatio,
-        resolution,
-        voice_id: voiceId,
-        voice_rate: voiceRate,
-        tone,
-        camera_style: cameraStyle,
-        map_provider: mapProviderId,
-        enable_3d_terrain: enable3dTerrain,
-        enable_subtitles: enableSubtitles,
-        enable_bgm: enableBgm,
-        scenes,
+      const res = await api.startScenarioRender(scenario.id, {
+        aspect_ratio: renderAspectRatio,
+        resolution: renderResolution,
+        fps: renderFps,
+        voice_id: renderVoiceId,
+        enable_bgm: true,
+        enable_subtitles: true,
       });
-      applyProjectToState(updated);
-      setStatusBanner('Đã lưu nội dung lời dẫn chỉnh sửa và cấu hình dự án.');
-    } catch (err: any) {
-      setApiError(err?.message || 'Không thể lưu chỉnh sửa kịch bản.');
-    } finally {
-      setIsLoadingWeather(false);
-    }
-  };
-
-  const handlePrepareTTSAndPreview = async () => {
-    if (!project) return;
-    try {
-      setIsPlaying(false);
-      setIsPreparingPreview(true);
-      setApiError(null);
-      setStatusBanner('Đang tạo giọng đọc tiếng Việt (Edge Neural TTS) và đồng bộ hóa timeline camera...');
-
-      if (scriptDirty) {
-        await api.updateProject(project.id, {
-          name: projectName,
-          aspect_ratio: aspectRatio,
-          resolution,
-          voice_id: voiceId,
-          voice_rate: voiceRate,
-          tone,
-          camera_style: cameraStyle,
-          map_provider: mapProviderId,
-          enable_3d_terrain: enable3dTerrain,
-          enable_subtitles: enableSubtitles,
-          enable_bgm: enableBgm,
-          scenes,
-        });
-      }
-
-      const syncedProj = await api.preparePreview(project.id);
-      applyProjectToState(syncedProj);
-      setCurrentTimeSec(0);
-      setStatusBanner(
-        `Đã tạo xong giọng đọc TTS (${syncedProj.total_duration_sec.toFixed(1)}s). Đang phát hành trình camera đồng bộ!`
-      );
-      setTimeout(() => {
-        setIsPlaying(true);
-      }, 250);
-    } catch (err: any) {
-      setApiError(err?.message || 'Lỗi khi tạo giọng đọc xem trước.');
-    } finally {
-      setIsPreparingPreview(false);
-    }
-  };
-
-  const handleStartRenderMP4 = async () => {
-    if (!project) return;
-    try {
-      setIsPlaying(false);
-      setApiError(null);
-
-      await api.updateProject(project.id, {
-        name: projectName,
-        aspect_ratio: aspectRatio,
-        resolution,
-        voice_id: voiceId,
-        voice_rate: voiceRate,
-        tone,
-        camera_style: cameraStyle,
-        map_provider: mapProviderId,
-        enable_3d_terrain: enable3dTerrain,
-        enable_subtitles: enableSubtitles,
-        enable_bgm: enableBgm,
-        scenes,
-      });
-
-      const res = await api.startRender(project.id);
       setRenderProgress(res.progress);
-      setStatusBanner(res.message);
     } catch (err: any) {
-      setApiError(err?.message || 'Không thể khởi chạy tiến trình render MP4.');
+      setApiError(err?.message || 'Không thể bắt đầu render video.');
+    } finally {
+      setIsStartingRender(false);
     }
   };
 
-  const handleSeekFromRender = useCallback((t: number) => {
-    setCurrentTimeSec(t);
-  }, []);
-
-  // In Playwright RenderMode (`/?renderMode=1&projectId=...`), render ONLY the fullscreen broadcast canvas
-  if (isRenderMode) {
+  // Fullscreen Render Mode for Puppeteer / Playwright
+  if (isRenderMode && scenario && timelineState) {
     return (
-      <div className="wc-fullscreen-render-root">
-        <RealMapCanvas
-          scenes={scenes}
-          forecasts={forecasts}
-          places={places}
-          adminBoundaries={adminBoundaries}
-          subtitleChunks={project?.audio_info?.subtitle_chunks}
-          mapProviderId={mapProviderId}
-          mapProviders={health?.map_config.providers || {}}
-          enable3dTerrain={enable3dTerrain}
-          enableSubtitles={enableSubtitles}
-          cameraStyle={cameraStyle}
-          aspectRatio={aspectRatio}
-          activeOverlayOverride={activeOverlayOverride}
-          radarTileUrl={radarTileUrl}
-          currentTimeSec={currentTimeSec}
-          totalDurationSec={totalDurationSec}
-          isPlaying={false}
-          isRenderMode={true}
-          forecastDate={forecastDate}
-          onSeekTimeFromRender={handleSeekFromRender}
-        />
+      <div className="wc-fullscreen-render-root w-screen h-screen overflow-hidden bg-black select-none">
+        <div className="w-full h-full relative">
+          <TacticalMilitaryCanvas
+            scenario={scenario}
+            currentTime={currentTimeSec}
+            camera={timelineState.camera}
+            activeUnitIds={timelineState.activeUnitIds}
+            activeCombatEvents={timelineState.activeCombatEvents}
+            activeTerritoryIds={timelineState.activeTerritoryIds}
+            isInteractive={false}
+          />
+          <MilitaryDocumentaryHUD
+            scenario={scenario}
+            currentTime={currentTimeSec}
+            currentStep={timelineState.currentStep}
+            factionsStatus={timelineState.factionsStatus}
+            subtitleText={timelineState.subtitleText}
+            showCinematicBars={false}
+          />
+        </div>
       </div>
     );
   }
 
-  const isRenderingNow =
-    renderProgress?.status === 'preparing_audio' ||
-    renderProgress?.status === 'syncing_timeline' ||
-    renderProgress?.status === 'rendering_map' ||
-    renderProgress?.status === 'encoding_video';
-
   return (
-    <div className="wc-studio-app">
-      {/* Hidden Master Audio Element for Synchronized Browser Preview */}
-      {project?.audio_info?.master_audio_url && (
-        <audio
-          ref={audioRef}
-          src={`${project.audio_info.master_audio_url}?t=${encodeURIComponent(project.updated_at || '')}`}
-          preload="auto"
-          onEnded={() => setIsPlaying(false)}
-        />
-      )}
-
-      {/* TOP STUDIO HEADER */}
-      <header className="wc-header">
-        <div className="wc-header-left">
-          <div className="wc-logo-mark">
-            <Globe className="wc-icon-spin-slow" size={22} />
+    <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
+      {/* 1. TOP STUDIO HEADER */}
+      <header className="h-14 border-b border-slate-800 bg-slate-950/95 backdrop-blur px-4 flex items-center justify-between z-30 flex-shrink-0">
+        {/* Brand / Logo */}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-rose-600/20 border border-rose-500/50 flex items-center justify-center text-rose-500 shadow-lg shadow-rose-950/50">
+            <Swords className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="wc-studio-title">WEATHERCAST STUDIO</h1>
-            <p className="wc-studio-subtitle">
-              Hệ thống AI Tạo Video Dự Báo Thời Tiết Việt Nam • Bản đồ 3D MapLibre GL JS & Open-Meteo
+            <div className="flex items-center gap-2">
+              <span className="font-black tracking-tight text-white text-base">ARES</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                TACTICAL 3D
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 -mt-0.5">
+              Animated Military History Map Studio
             </p>
           </div>
         </div>
 
-        {/* Quick Camera Presets (Regions & Key Cities required by Acceptance Criteria) */}
-        <div className="wc-preset-bar">
-          <span className="wc-preset-label">
-            <Compass size={14} /> Bay nhanh Camera:
-          </span>
-          {presets.map((pr) => (
+        {/* Center: Scenario Selector */}
+        <div className="flex items-center gap-2 max-w-md">
+          <select
+            value={selectedScenarioId}
+            onChange={(e) => setSelectedScenarioId(e.target.value)}
+            className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 font-medium focus:outline-none focus:border-rose-500 max-w-xs truncate"
+          >
+            {availableScenarios.map((sc) => (
+              <option key={sc.id} value={sc.id}>
+                {sc.title}
+              </option>
+            ))}
+          </select>
+
+          {/* View Mode Toggle */}
+          <div className="flex bg-slate-900 border border-slate-700 rounded-lg p-0.5 text-xs">
             <button
-              key={pr.id}
-              type="button"
-              className="wc-preset-btn"
-              onClick={() =>
-                handleFlyToPresetOrPlace({
-                  id: pr.id,
-                  name: pr.name,
-                  lat: pr.lat,
-                  lon: pr.lon,
-                  zoom: pr.zoom,
-                  pitch: pr.pitch,
-                  bearing: pr.bearing,
-                  isPlace: false,
-                })
-              }
+              onClick={() => setViewMode('documentary')}
+              className={`px-2.5 py-1 rounded font-medium flex items-center gap-1.5 transition-colors ${
+                viewMode === 'documentary'
+                  ? 'bg-rose-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
             >
-              {pr.name.replace('Khu vực ', '')}
+              <Film className="w-3.5 h-3.5" />
+              <span>Phim tài liệu</span>
             </button>
-          ))}
-          <span className="wc-preset-divider">|</span>
-          {['ha_noi', 'bac_ninh', 'da_nang', 'tp_hcm'].map((pid) => {
-            const p = places.find((item) => item.id === pid);
-            if (!p) return null;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className="wc-preset-btn wc-preset-city"
-                onClick={() =>
-                  handleFlyToPresetOrPlace({
-                    id: p.id,
-                    name: p.name,
-                    lat: p.lat,
-                    lon: p.lon,
-                    zoom: p.zoom,
-                    pitch: p.pitch,
-                    bearing: p.bearing,
-                    isPlace: true,
-                  })
-                }
-              >
-                {p.name}
-              </button>
-            );
-          })}
+            <button
+              onClick={() => setViewMode('tactical')}
+              className={`px-2.5 py-1 rounded font-medium flex items-center gap-1.5 transition-colors ${
+                viewMode === 'tactical'
+                  ? 'bg-rose-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+              <span>Tác chiến</span>
+            </button>
+          </div>
         </div>
 
-        <div className="wc-header-right">
-          <a
-            href={health?.weather_sources.official_warning_reference.url || 'https://www.nchmf.gov.vn/kttv/'}
-            target="_blank"
-            rel="noreferrer"
-            className="wc-nchmf-link"
-            title="Đối chiếu bản tin cảnh báo khí tượng thủy văn chính thức của NCHMF"
-          >
-            <span>Cảnh báo KTTV Quốc gia (NCHMF)</span>
-            <ExternalLink size={13} />
-          </a>
-          <div
-            className={`wc-health-pill ${
-              health?.status === 'ok' ? 'wc-health-ok' : 'wc-health-warn'
+        {/* Right Actions */}
+        <div className="flex items-center gap-2">
+          {/* Order of Battle Drawer Button */}
+          <button
+            onClick={() => setLeftDrawerOpen((prev) => !prev)}
+            className={`p-2 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors ${
+              leftDrawerOpen
+                ? 'bg-slate-800 border-slate-600 text-rose-400'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
             }`}
+            title="Biên chế lực lượng & Đơn vị tác chiến"
           >
-            <CheckCircle2 size={14} />
-            <span>
-              {health?.status === 'ok' ? 'FFmpeg & API Sẵn sàng' : 'Đang kiểm tra hệ thống'}
-            </span>
-          </div>
+            <Shield className="w-4 h-4" />
+            <span className="hidden md:inline">Biên chế quân sự</span>
+          </button>
+
+          {/* Timeline Steps Drawer Button */}
+          <button
+            onClick={() => setRightDrawerOpen((prev) => !prev)}
+            className={`p-2 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors ${
+              rightDrawerOpen
+                ? 'bg-slate-800 border-slate-600 text-rose-400'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+            }`}
+            title="Các bước chiến dịch & Lời bình"
+          >
+            <ListOrdered className="w-4 h-4" />
+            <span className="hidden md:inline">Diễn biến</span>
+          </button>
+
+          {/* Export Video MP4 Button */}
+          <button
+            onClick={() => setRenderModalOpen(true)}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-rose-950/60 flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Download className="w-4 h-4" />
+            <span>Xuất Video MP4</span>
+          </button>
         </div>
       </header>
 
-      {/* NOTIFICATION & ERROR BANNERS */}
-      {apiError && (
-        <div className="wc-alert-bar wc-alert-error">
-          <div className="wc-alert-content">
-            <AlertTriangle size={16} />
-            <span>
-              <strong>Lỗi:</strong> {apiError}
-            </span>
-          </div>
-          <button type="button" onClick={() => setApiError(null)}>
-            Đóng
-          </button>
-        </div>
-      )}
-
-      {statusBanner && !apiError && (
-        <div className="wc-alert-bar wc-alert-info">
-          <div className="wc-alert-content">
-            <Sparkles size={16} />
-            <span>{statusBanner}</span>
-          </div>
-          <button type="button" onClick={() => setStatusBanner(null)}>
-            Ẩn
-          </button>
-        </div>
-      )}
-
-      {/* MAIN WORKSPACE GRID */}
-      <main className="wc-workspace">
-        {/* LEFT / CENTER: INTERACTIVE 3D MAPLIBRE STAGE & BOTTOM TIMELINE/SCRIPT */}
-        <section className="wc-main-column">
-          {/* Map Toolbar */}
-          <div className="wc-map-toolbar">
-            <div className="wc-toolbar-group">
-              <label className="wc-toolbar-item">
-                <Layers size={14} />
-                <span>Nền bản đồ:</span>
-                <select
-                  value={mapProviderId}
-                  onChange={(e) => setMapProviderId(e.target.value)}
-                >
-                  {Object.values(health?.map_config.providers || {}).map((prov) => (
-                    <option
-                      key={prov.id}
-                      value={prov.id}
-                      disabled={prov.requires_key && !prov.available}
-                    >
-                      {prov.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="wc-toolbar-item">
-                <span>Lớp thời tiết:</span>
-                <select
-                  value={activeOverlayOverride}
-                  onChange={(e) =>
-                    setActiveOverlayOverride(e.target.value as WeatherOverlayType | 'auto')
-                  }
-                >
-                  <option value="auto">Tự động theo kịch bản</option>
-                  <option value="overview">Tổng quan toàn quốc</option>
-                  <option value="temperature">Nhiệt độ (°C)</option>
-                  <option value="precipitation">Lượng mưa & Xác suất mưa (mm/%)</option>
-                  <option value="radar">Radar mưa thời gian thực (RainViewer)</option>
-                  <option value="wind">Tốc độ & Hướng gió (km/h)</option>
-                  <option value="uv">Bức xạ tia cực tím (UV)</option>
-                </select>
-              </label>
-
-              <button
-                type="button"
-                className={`wc-toggle-chip ${enable3dTerrain ? 'active' : ''}`}
-                onClick={() => setEnable3dTerrain(!enable3dTerrain)}
-                title="Bật/tắt dữ liệu độ cao địa hình DEM thật (AWS Open Data Terrarium)"
-              >
-                <Mountain size={14} />
-                <span>{enable3dTerrain ? 'Địa hình 3D DEM: BẬT' : 'Địa hình 3D DEM: TẮT'}</span>
-              </button>
-            </div>
-
-            {/* Live Camera Telemetry Readout */}
-            <div className="wc-telemetry-bar">
-              <span>Vĩ độ: {cameraTelemetry.center[1].toFixed(3)}°B</span>
-              <span>Kinh độ: {cameraTelemetry.center[0].toFixed(3)}°Đ</span>
-              <span>Zoom: {cameraTelemetry.zoom.toFixed(2)}</span>
-              <span>Pitch: {cameraTelemetry.pitch.toFixed(0)}°</span>
-              <span>Bearing: {cameraTelemetry.bearing.toFixed(0)}°</span>
+      {/* 2. MAIN WORKSPACE / 3D MAP VIEWPORT */}
+      <div className="relative flex-1 w-full h-full overflow-hidden">
+        {isLoadingScenario && (
+          <div className="absolute inset-0 z-40 bg-slate-950/90 flex flex-col items-center justify-center gap-3">
+            <div className="w-10 h-10 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm text-slate-300 font-mono">
+              Đang nạp sa bàn 3D & dữ liệu chiến dịch...
             </div>
           </div>
+        )}
 
-          {/* Real 3D MapLibre GL JS Stage */}
-          <div className="wc-viewport-container">
-            <RealMapCanvas
-              scenes={scenes}
-              forecasts={forecasts}
-              places={places}
-              adminBoundaries={adminBoundaries}
-              highlightedPlaceIdOverride={isPlaying ? null : highlightedPlaceIdOverride}
-              subtitleChunks={project?.audio_info?.subtitle_chunks}
-              mapProviderId={mapProviderId}
-              mapProviders={health?.map_config.providers || {}}
-              enable3dTerrain={enable3dTerrain}
-              enableSubtitles={enableSubtitles}
-              cameraStyle={cameraStyle}
-              aspectRatio={aspectRatio}
-              activeOverlayOverride={activeOverlayOverride}
-              radarTileUrl={radarTileUrl}
-              currentTimeSec={currentTimeSec}
-              totalDurationSec={totalDurationSec}
-              isPlaying={isPlaying}
-              isRenderMode={false}
-              forecastDate={forecastDate}
-              onSelectPlaceFromMap={(pid) => {
-                setIsPlaying(false);
-                setHighlightedPlaceIdOverride(pid);
-              }}
-              onCameraTelemetryChange={setCameraTelemetry}
-              onMapReady={(m) => {
-                mapInstanceRef.current = m;
-              }}
+        {scenario && timelineState && (
+          <>
+            <TacticalMilitaryCanvas
+              scenario={scenario}
+              currentTime={currentTimeSec}
+              camera={timelineState.camera}
+              activeUnitIds={timelineState.activeUnitIds}
+              activeCombatEvents={timelineState.activeCombatEvents}
+              activeTerritoryIds={timelineState.activeTerritoryIds}
+              isInteractive={true}
             />
+
+            {viewMode === 'documentary' && (
+              <MilitaryDocumentaryHUD
+                scenario={scenario}
+                currentTime={currentTimeSec}
+                currentStep={timelineState.currentStep}
+                factionsStatus={timelineState.factionsStatus}
+                subtitleText={timelineState.subtitleText}
+              />
+            )}
+          </>
+        )}
+
+        {/* LEFT DRAWER: ORDER OF BATTLE (BIÊN CHẾ LỰC LƯỢNG) */}
+        {leftDrawerOpen && scenario && (
+          <div className="absolute top-4 left-4 bottom-4 w-80 bg-slate-950/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-2xl p-4 flex flex-col z-30">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800 mb-3">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-rose-500" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-white">
+                  Biên chế & Tướng Lĩnh
+                </h2>
+              </div>
+              <button
+                onClick={() => setLeftDrawerOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Faction Cards */}
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              {scenario.factions.map((fac) => (
+                <div
+                  key={fac.id}
+                  className="bg-slate-900/90 rounded-lg p-3 border border-slate-800"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-xs" style={{ color: fac.color }}>
+                      {fac.flag_icon} {fac.name}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 mb-2">
+                    Chỉ huy: <span className="font-semibold text-white">{fac.commander}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400">
+                    <div>Quân số: <span className="text-white font-bold">{fac.initial_manpower.toLocaleString()}</span></div>
+                    <div>Pháo binh: <span className="text-white font-bold">{fac.artillery_count}</span></div>
+                    <div>Xe tăng: <span className="text-white font-bold">{fac.tanks_count}</span></div>
+                    <div>Máy bay: <span className="text-white font-bold">{fac.aircraft_count}</span></div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="pt-2">
+                <h3 className="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2">
+                  Danh sách đơn vị ({scenario.units.length})
+                </h3>
+                <div className="space-y-1.5">
+                  {scenario.units.map((unit) => {
+                    const isActive = timelineState?.activeUnitIds.has(unit.id);
+                    return (
+                      <div
+                        key={unit.id}
+                        className={`p-2 rounded border text-xs flex justify-between items-center transition-all ${
+                          isActive
+                            ? 'bg-rose-950/40 border-rose-500/50 text-white'
+                            : 'bg-slate-900/50 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-[11px]">{unit.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {unit.type.toUpperCase()} • Cấp {unit.echelon}
+                          </div>
+                        </div>
+                        <div className="text-right font-mono text-[11px]">
+                          <span className="text-emerald-400">{unit.strength_current.toLocaleString()}</span>
+                          <span className="text-slate-500"> / {unit.strength_initial.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* RIGHT DRAWER: CAMPAIGN STEPS & SCRIPT (DIỄN BIẾN & LỜI BÌNH) */}
+        {rightDrawerOpen && scenario && (
+          <div className="absolute top-4 right-4 bottom-4 w-96 bg-slate-950/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-2xl p-4 flex flex-col z-30">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800 mb-3">
+              <div className="flex items-center gap-2">
+                <ListOrdered className="w-4 h-4 text-rose-500" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-white">
+                  Diễn biến chiến dịch ({scenario.timeline_steps.length} đợt)
+                </h2>
+              </div>
+              <button
+                onClick={() => setRightDrawerOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              {scenario.timeline_steps.map((step, idx) => {
+                const isCurrent = timelineState?.currentStepIndex === idx;
+                return (
+                  <div
+                    key={step.step_id}
+                    onClick={() => handleStepJump(idx)}
+                    className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                      isCurrent
+                        ? 'bg-rose-950/40 border-rose-500 text-white shadow-lg shadow-rose-950/40'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-900 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-mono text-amber-400 font-bold">
+                        {step.timestamp_label}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {step.duration_sec.toFixed(1)}s
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-xs text-white mb-1">{step.title}</h3>
+                    <p className="text-[11px] text-slate-300 line-clamp-3 leading-relaxed">
+                      {step.narration_text}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. BOTTOM TIMELINE CONTROLLER */}
+      {scenario && (
+        <footer className="h-16 border-t border-slate-800 bg-slate-950 px-4 md:px-6 flex items-center justify-between z-30 flex-shrink-0">
+          {/* Left Controls: Play, Reset, Step Prev/Next */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevStep}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition"
+              title="Giai đoạn trước"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleTogglePlay}
+              className="w-10 h-10 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-950/80 transition-all hover:scale-105 active:scale-95"
+              title={isPlaying ? 'Tạm dừng (Phím cách)' : 'Bắt đầu phát (Phím cách)'}
+            >
+              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+            </button>
+
+            <button
+              onClick={handleNextStep}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition"
+              title="Giai đoạn kế tiếp"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleResetTimeline}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition ml-1"
+              title="Quay lại từ đầu"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+
+            <div className="font-mono text-xs text-slate-300 ml-2">
+              <span className="font-bold text-white">{formatMMSS(currentTimeSec)}</span>
+              <span className="text-slate-500"> / {formatMMSS(scenario.total_duration_sec || 60)}</span>
+            </div>
           </div>
 
-          {/* Transport & Timeline Playback Bar */}
-          <div className="wc-transport-bar">
-            <div className="wc-transport-controls">
-              <button
-                type="button"
-                className="wc-btn-icon wc-btn-play"
-                onClick={() => {
-                  setHighlightedPlaceIdOverride(null);
-                  setIsPlaying(!isPlaying);
-                }}
-                title={isPlaying ? 'Tạm dừng hành trình' : 'Phát hành trình camera'}
-              >
-                {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                <span>{isPlaying ? 'Tạm dừng' : 'Phát Hành Trình'}</span>
-              </button>
-
-              <button
-                type="button"
-                className="wc-btn-icon"
-                onClick={() => {
+          {/* Middle Scrubber Bar */}
+          <div className="flex-1 max-w-2xl mx-4 flex flex-col justify-center">
+            <div className="relative w-full flex items-center">
+              <input
+                type="range"
+                min={0}
+                max={scenario.total_duration_sec || 60}
+                step={0.1}
+                value={currentTimeSec}
+                onChange={(e) => {
                   setIsPlaying(false);
-                  setCurrentTimeSec(0);
-                  if (audioRef.current) audioRef.current.currentTime = 0;
+                  setCurrentTimeSec(parseFloat(e.target.value));
                 }}
-                title="Về đầu bản tin (00:00)"
-              >
-                <RotateCcw size={16} />
-              </button>
-
-              <span className="wc-transport-time">
-                {formatTimeMMSS(currentTimeSec)} / {formatTimeMMSS(totalDurationSec)}
-              </span>
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+              />
             </div>
-
-            <input
-              type="range"
-              className="wc-timeline-scrubber"
-              min={0}
-              max={Math.max(1, totalDurationSec)}
-              step={0.1}
-              value={currentTimeSec}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                setHighlightedPlaceIdOverride(null);
-                setCurrentTimeSec(val);
-                if (audioRef.current) {
-                  audioRef.current.currentTime = val;
-                }
-              }}
-            />
-
-            <div className="wc-transport-status">
-              {project?.audio_info ? (
-                <span className="wc-tts-ready-badge">
-                  <Volume2 size={14} /> Đã đồng bộ âm thanh TTS ({project.audio_info.total_duration_sec.toFixed(1)}s)
-                </span>
-              ) : (
-                <span className="wc-tts-est-badge">
-                  Thời lượng ước tính ({totalDurationSec.toFixed(1)}s) • Nhấn "Tạo TTS & Xem Trước" để khớp giọng đọc
-                </span>
-              )}
+            {/* Step Markers along scrubber */}
+            <div className="relative w-full h-3 mt-1">
+              {scenario.timeline_steps.map((st, i) => {
+                const pct = ((st.start_time) / (scenario.total_duration_sec || 60)) * 100;
+                return (
+                  <div
+                    key={st.step_id}
+                    onClick={() => handleStepJump(i)}
+                    className="absolute top-0 w-1.5 h-1.5 bg-slate-600 hover:bg-amber-400 rounded-full cursor-pointer -translate-x-1/2"
+                    style={{ left: `${pct}%` }}
+                    title={st.title}
+                  />
+                );
+              })}
             </div>
           </div>
 
-          {/* BOTTOM STUDIO DECK: TIMELINE / SCRIPT EDITOR / WEATHER DATA / MP4 PLAYER */}
-          <div className="wc-bottom-deck">
-            <div className="wc-deck-tabs">
-              <button
-                type="button"
-                className={`wc-deck-tab ${activeBottomTab === 'script' ? 'active' : ''}`}
-                onClick={() => setActiveBottomTab('script')}
-              >
-                <FileText size={15} />
-                <span>Kịch Bản Lời Dẫn & Chỉnh Sửa ({scenes.length} cảnh)</span>
-              </button>
-              <button
-                type="button"
-                className={`wc-deck-tab ${activeBottomTab === 'timeline' ? 'active' : ''}`}
-                onClick={() => setActiveBottomTab('timeline')}
-              >
-                <Compass size={15} />
-                <span>Timeline Phân Cảnh & Camera</span>
-              </button>
-              <button
-                type="button"
-                className={`wc-deck-tab ${activeBottomTab === 'weather' ? 'active' : ''}`}
-                onClick={() => setActiveBottomTab('weather')}
-              >
-                <Globe size={15} />
-                <span>Bảng Số Liệu Thời Tiết Thật ({forecasts.length} trạm)</span>
-              </button>
-              <button
-                type="button"
-                className={`wc-deck-tab ${activeBottomTab === 'video' ? 'active' : ''}`}
-                onClick={() => setActiveBottomTab('video')}
-              >
-                <Video size={15} />
-                <span>
-                  Trình Phát & Tải Video MP4 {project?.output_file ? '✓' : ''}
-                </span>
-              </button>
-
-              {scriptDirty && (
+          {/* Right Controls: Speed Selector, Audio Mute */}
+          <div className="flex items-center gap-2">
+            <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs font-mono">
+              {[0.5, 1.0, 1.5, 2.0].map((s) => (
                 <button
-                  type="button"
-                  className="wc-save-script-btn"
-                  onClick={handleSaveEditedScript}
-                  disabled={isLoadingWeather}
+                  key={s}
+                  onClick={() => setPlaybackSpeed(s)}
+                  className={`px-2 py-0.5 rounded ${
+                    playbackSpeed === s
+                      ? 'bg-slate-800 text-rose-400 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  Lưu Kịch Bản Đã Sửa
+                  {s}x
                 </button>
-              )}
+              ))}
             </div>
 
-            <div className="wc-deck-body">
-              {activeBottomTab === 'script' && (
-                <div className="wc-script-list">
-                  {scenes.map((sc, idx) => {
-                    const isCurrent =
-                      currentTimeSec >= sc.start_time && currentTimeSec <= sc.end_time;
-                    return (
-                      <div
-                        key={sc.scene_id}
-                        className={`wc-script-row ${isCurrent ? 'wc-script-row-active' : ''}`}
-                      >
-                        <div className="wc-script-meta">
-                          <div className="wc-script-time-badge">
-                            {formatTimeMMSS(sc.start_time)} – {formatTimeMMSS(sc.end_time)}
-                          </div>
-                          <div className="wc-script-scene-title">{sc.title}</div>
-                          <div className="wc-script-coords">
-                            Tọa độ: {sc.location.lat.toFixed(2)}°B, {sc.location.lon.toFixed(2)}°Đ • Zoom{' '}
-                            {sc.camera.zoom}
-                          </div>
-                          <button
-                            type="button"
-                            className="wc-mini-jump-btn"
-                            onClick={() => {
-                              setIsPlaying(false);
-                              setHighlightedPlaceIdOverride(null);
-                              setCurrentTimeSec(sc.start_time + 0.05);
-                            }}
-                          >
-                            Bay tới cảnh này
-                          </button>
-                        </div>
-                        <div className="wc-script-editor-col">
-                          <textarea
-                            value={sc.narration}
-                            rows={2}
-                            onChange={(e) => handleSceneNarrationEdit(idx, e.target.value)}
-                            placeholder="Nhập lời dẫn tiếng Việt cho phân cảnh này..."
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <button
+              onClick={() => setIsMuted((prev) => !prev)}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
+              title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          </div>
+        </footer>
+      )}
 
-              {activeBottomTab === 'timeline' && (
-                <div className="wc-timeline-cards">
-                  {scenes.map((sc, idx) => {
-                    const isCurrent =
-                      currentTimeSec >= sc.start_time && currentTimeSec <= sc.end_time;
-                    return (
-                      <div
-                        key={sc.scene_id}
-                        className={`wc-timeline-card ${isCurrent ? 'active' : ''}`}
-                        onClick={() => {
-                          setIsPlaying(false);
-                          setHighlightedPlaceIdOverride(null);
-                              setCurrentTimeSec(sc.start_time + 0.05);
-                        }}
-                      >
-                        <div className="wc-tl-card-top">
-                          <span className="wc-tl-index">Cảnh {idx + 1}</span>
-                          <span className="wc-tl-time">
-                            {formatTimeMMSS(sc.start_time)} - {formatTimeMMSS(sc.end_time)} (
-                            {sc.duration_sec.toFixed(1)}s)
-                          </span>
-                        </div>
-                        <div className="wc-tl-title">{sc.title}</div>
-                        <div className="wc-tl-cam-specs">
-                          <span>
-                            Center: [{sc.camera.center[0].toFixed(2)}, {sc.camera.center[1].toFixed(2)}]
-                          </span>
-                          <span>
-                            Z:{sc.camera.zoom} | P:{sc.camera.pitch}° | B:{sc.camera.bearing}°
-                          </span>
-                        </div>
-                        <div className="wc-tl-overlay-tag">
-                          Lớp hiển thị: {sc.weather_overlay.toUpperCase()} • Chuyển cảnh:{' '}
-                          {sc.transition}
-                        </div>
-                      </div>
-                    );
-                  })}
+      {/* 4. EXPORT VIDEO MP4 MODAL */}
+      {renderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-6 text-slate-100">
+            <div className="flex justify-between items-center pb-4 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-600/20 text-rose-500 flex items-center justify-center">
+                  <Film className="w-4 h-4" />
                 </div>
-              )}
+                <div>
+                  <h3 className="font-bold text-base text-white">Xuất Video Sa Bàn MP4</h3>
+                  <p className="text-xs text-slate-400">Playwright Chromium 3D + FFmpeg render</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRenderModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              {activeBottomTab === 'weather' && (
-                <div className="wc-weather-table-wrap">
-                  <table className="wc-weather-table">
-                    <thead>
-                      <tr>
-                        <th>Địa phương</th>
-                        <th>Đơn vị hành chính (2025)</th>
-                        <th>Tọa độ (WGS84)</th>
-                        <th>Hiện tại (°C)</th>
-                        <th>Cao / Thấp (°C)</th>
-                        <th>Mưa (% / mm)</th>
-                        <th>Gió (km/h)</th>
-                        <th>UV</th>
-                        <th>Trạng thái WMO</th>
-                        <th>Thời điểm lấy mẫu</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {forecasts.map((f) => (
-                        <tr key={f.place_id}>
-                          <td>
-                            <strong>{f.place_name}</strong>
-                          </td>
-                          <td>
-                            {places.find((p) => p.id === f.place_id)?.admin_2025_unit ||
-                              f.place_name}
-                          </td>
-                          <td>
-                            {f.lat.toFixed(3)}°B, {f.lon.toFixed(3)}°Đ
-                          </td>
-                          <td>
-                            <strong>{f.temperature_c ?? '--'}°C</strong>
-                          </td>
-                          <td>
-                            {f.temp_max_c ?? '--'}° / {f.temp_min_c ?? '--'}°C
-                          </td>
-                          <td>
-                            {f.precipitation_probability_pct ?? 0}% ({f.precipitation_mm ?? 0} mm)
-                          </td>
-                          <td>
-                            {f.wind_speed_kmh ?? '--'} km/h ({f.wind_direction_label})
-                          </td>
-                          <td>{f.uv_index ?? '--'}</td>
-                          <td>{f.weather_description_vi}</td>
-                          <td>{f.fetched_at.replace('T', ' ')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="wc-weather-charts-grid">
-                    {forecasts.map((f) => (
-                      <IntradayWeatherChart key={`chart-${f.place_id}`} weather={f} compact={false} />
+            {/* Render Config Options */}
+            {!renderProgress || renderProgress.status === 'idle' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1.5">
+                    Tỷ lệ khung hình (Aspect Ratio)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: '16:9', label: '16:9 (Ngang / Youtube / TV)' },
+                      { id: '9:16', label: '9:16 (Dọc / Shorts / Reels)' },
+                      { id: '1:1', label: '1:1 (Vuông)' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setRenderAspectRatio(opt.id as any)}
+                        className={`p-2.5 rounded-lg border text-xs font-medium text-center transition ${
+                          renderAspectRatio === opt.id
+                            ? 'bg-rose-600/20 border-rose-500 text-rose-300 font-bold'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {activeBottomTab === 'video' && (
-                <div className="wc-video-preview-pane">
-                  {project?.output_file ? (
-                    <div className="wc-video-ready-grid">
-                      <video
-                        key={project.output_file}
-                        className="wc-rendered-video-player"
-                        controls
-                        src={`/api/projects/${project.id}/download`}
-                      />
-                      <div className="wc-video-meta-panel">
-                        <h4>Video MP4 Đã Xuất Thành Công</h4>
-                        <p>
-                          File: <code>{project.output_file}</code>
-                        </p>
-                        {renderProgress?.video_metadata && (
-                          <ul className="wc-video-specs-list">
-                            <li>
-                              Độ phân giải: {renderProgress.video_metadata.width} ×{' '}
-                              {renderProgress.video_metadata.height}
-                            </li>
-                            <li>
-                              Thời lượng: {renderProgress.video_metadata.duration_sec} giây
-                            </li>
-                            <li>
-                              Codec: Video {renderProgress.video_metadata.video_codec?.toUpperCase()}{' '}
-                              / Audio {renderProgress.video_metadata.audio_codec?.toUpperCase()}
-                            </li>
-                            <li>
-                              Dung lượng:{' '}
-                              {(renderProgress.video_metadata.file_size_bytes / (1024 * 1024)).toFixed(
-                                2
-                              )}{' '}
-                              MB
-                            </li>
-                          </ul>
-                        )}
-                        <a
-                          className="wc-btn-primary wc-download-link"
-                          href={`/api/projects/${project.id}/download`}
-                          download={project.output_file}
-                        >
-                          <Download size={16} />
-                          <span>Tải Xuống Video MP4</span>
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="wc-video-empty">
-                      <Film size={32} />
-                      <p>
-                        Chưa có file MP4 cho dự án này. Hãy nhấn nút{' '}
-                        <strong>"Render Video MP4"</strong> ở cột bên phải để hệ thống ghi lại hành
-                        trình bản đồ MapLibre 3D thật và ghép giọng đọc tiếng Việt.
-                      </p>
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-mono uppercase text-slate-400 mb-1.5">
+                      Độ phân giải
+                    </label>
+                    <select
+                      value={renderResolution}
+                      onChange={(e) => setRenderResolution(e.target.value as any)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                    >
+                      <option value="720p">720p HD (Tốc độ cao)</option>
+                      <option value="1080p">1080p Full HD (Chất lượng phát sóng)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono uppercase text-slate-400 mb-1.5">
+                      Tốc độ khung hình (FPS)
+                    </label>
+                    <select
+                      value={renderFps}
+                      onChange={(e) => setRenderFps(parseInt(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                    >
+                      <option value={30}>30 FPS (Chuẩn)</option>
+                      <option value={60}>60 FPS (Mượt mà nhất)</option>
+                    </select>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        </section>
 
-        {/* RIGHT PANEL: STUDIO CONFIGURATION & RENDER CONTROLS */}
-        <aside className="wc-sidebar">
-          <div className="wc-sidebar-scroll">
-            <div className="wc-panel-section">
-              <h3 className="wc-section-heading">
-                <Sliders size={16} />
-                <span>1. Phạm Vi & Địa Điểm Dự Báo</span>
-              </h3>
-
-              <label className="wc-field-label">
-                <span>Tên bản tin dự án</span>
-                <input
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                />
-              </label>
-
-              <div className="wc-field-row">
-                <label className="wc-field-label">
-                  <span>Phạm vi bản tin</span>
+                <div>
+                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1.5">
+                    Giọng đọc thuyết minh (Edge Neural TTS)
+                  </label>
                   <select
-                    value={scope}
-                    onChange={(e) =>
-                      handleSelectScope(e.target.value as 'nationwide' | 'region' | 'custom_places')
-                    }
+                    value={renderVoiceId}
+                    onChange={(e) => setRenderVoiceId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
                   >
-                    <option value="nationwide">Toàn quốc (Bắc - Trung - Nam)</option>
-                    <option value="region">Theo miền trọng điểm</option>
-                    <option value="custom_places">Chọn tỉnh/thành tùy chỉnh</option>
+                    <option value="vi-VN-NamMinhNeural">Nam Minh (Giọng Nam - Hào hùng, truyền hình)</option>
+                    <option value="vi-VN-HoaiMyNeural">Hoài My (Giọng Nữ - Truyền cảm, tin tức)</option>
                   </select>
-                </label>
-
-                <label className="wc-field-label">
-                  <span>Ngày dự báo</span>
-                  <input
-                    type="date"
-                    value={forecastDate}
-                    onChange={(e) => setForecastDate(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              {/* Ordered Places Selector for Camera Flight Path */}
-              <div className="wc-places-manager">
-                <div className="wc-places-header">
-                  <span>Thứ tự điểm bay Camera ({selectedPlaceIds.length} địa điểm)</span>
-                  <span className="wc-schema-tag">{adminSchemaVersion}</span>
                 </div>
 
-                <div className="wc-selected-places-list">
-                  {selectedPlaceIds.map((pid, idx) => {
-                    const meta = places.find((p) => p.id === pid);
-                    return (
-                      <div key={pid} className="wc-place-chip-row">
-                        <span className="wc-place-order">{idx + 1}.</span>
-                        <div
-                          className="wc-place-chip-name"
-                          onClick={() => {
-                            if (meta) {
-                              handleFlyToPresetOrPlace({
-                                id: meta.id,
-                                name: meta.name,
-                                lat: meta.lat,
-                                lon: meta.lon,
-                                zoom: meta.zoom,
-                                pitch: meta.pitch,
-                                bearing: meta.bearing,
-                                isPlace: true,
-                              });
-                            }
-                          }}
-                        >
-                          <strong>{meta ? meta.name : pid}</strong>
-                          {meta && (
-                            <small>
-                              ({meta.lat.toFixed(2)}°B, {meta.lon.toFixed(2)}°Đ)
-                            </small>
-                          )}
-                        </div>
-                        <div className="wc-place-chip-actions">
-                          <button
-                            type="button"
-                            onClick={() => handleMovePlace(idx, -1)}
-                            disabled={idx === 0}
-                            title="Đưa lên trước"
-                          >
-                            <ArrowUp size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMovePlace(idx, 1)}
-                            disabled={idx === selectedPlaceIds.length - 1}
-                            title="Đưa xuống sau"
-                          >
-                            <ArrowDown size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemovePlace(pid)}
-                            title="Xóa địa điểm này"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="wc-add-place-row">
-                  <select
-                    value={placeToAdd}
-                    onChange={(e) => setPlaceToAdd(e.target.value)}
+                <div className="pt-3">
+                  <button
+                    onClick={handleStartRender}
+                    disabled={isStartingRender}
+                    className="w-full py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-rose-950/70 flex items-center justify-center gap-2 transition"
                   >
-                    {places.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — {p.region_label}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="button" className="wc-btn-secondary" onClick={handleAddPlace}>
-                    <Plus size={14} /> Thêm
+                    {isStartingRender ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Film className="w-4 h-4" />
+                    )}
+                    <span>Bắt đầu tiến trình Render MP4</span>
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="wc-panel-section">
-              <h3 className="wc-section-heading">
-                <Volume2 size={16} />
-                <span>2. Lời Dẫn AI & Giọng Đọc Tiếng Việt</span>
-              </h3>
-
-              <div className="wc-field-row">
-                <label className="wc-field-label">
-                  <span>Phong cách lời dẫn</span>
-                  <select value={tone} onChange={(e) => setTone(e.target.value as any)}>
-                    <option value="broadcast">Truyền hình chuyên nghiệp</option>
-                    <option value="concise">Ngắn gọn, súc tích</option>
-                    <option value="friendly">Thân thiện, đời thường</option>
-                    <option value="detailed">Chi tiết các chỉ số khí tượng</option>
-                  </select>
-                </label>
-
-                <label className="wc-field-label">
-                  <span>Thời lượng mục tiêu</span>
-                  <select
-                    value={targetDurationSec}
-                    onChange={(e) => setTargetDurationSec(Number(e.target.value))}
-                  >
-                    <option value={25}>Ngắn (~25 giây)</option>
-                    <option value={45}>Tiêu chuẩn (~45 giây)</option>
-                    <option value={60}>Đầy đủ (~60 giây)</option>
-                    <option value={90}>Chuyên sâu (~90 giây)</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="wc-field-label">
-                <span>Giọng đọc biên tập viên (Edge Neural TTS)</span>
-                <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>
-                  {(health?.voices || [
-                    { id: 'vi-VN-HoaiMyNeural', name: 'Hoài My (Nữ - Biên tập viên Truyền hình)' },
-                    { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (Nam - Biên tập viên Truyền hình)' },
-                  ]).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="wc-field-row">
-                <label className="wc-field-label">
-                  <span>Tốc độ đọc</span>
-                  <select value={voiceRate} onChange={(e) => setVoiceRate(e.target.value)}>
-                    <option value="-10%">Chậm rãi (-10%)</option>
-                    <option value="-5%">Hơi chậm (-5%)</option>
-                    <option value="+0%">Chuẩn truyền hình (+0%)</option>
-                    <option value="+5%">Hơi nhanh (+5%)</option>
-                    <option value="+10%">Nhanh (+10%)</option>
-                    <option value="+15%">Rất nhanh (+15%)</option>
-                  </select>
-                </label>
-
-                <label className="wc-field-label">
-                  <span>Chuyển động Camera</span>
-                  <select
-                    value={cameraStyle}
-                    onChange={(e) => setCameraStyle(e.target.value as any)}
-                  >
-                    <option value="cinematic_fly">Cinematic Fly (Bay parabol 3D)</option>
-                    <option value="broadcast_smooth">Broadcast Smooth (Truyền hình mượt)</option>
-                    <option value="dynamic_orbit">Dynamic Orbit (Xoay góc nhìn 3D)</option>
-                    <option value="direct_pan">Direct Pan (Di chuyển phẳng)</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            <div className="wc-panel-section">
-              <h3 className="wc-section-heading">
-                <Film size={16} />
-                <span>3. Định Dạng Khung Hình & Xuất MP4</span>
-              </h3>
-
-              <div className="wc-field-row">
-                <label className="wc-field-label">
-                  <span>Tỷ lệ khung hình</span>
-                  <select
-                    value={aspectRatio}
-                    onChange={(e) => setAspectRatio(e.target.value as '16:9' | '9:16' | '1:1')}
-                  >
-                    <option value="16:9">16:9 (Ngang TV / YouTube)</option>
-                    <option value="9:16">9:16 (Dọc Shorts / TikTok / Reels)</option>
-                    <option value="1:1">1:1 (Vuông Mạng xã hội)</option>
-                  </select>
-                </label>
-
-                <label className="wc-field-label">
-                  <span>Độ phân giải</span>
-                  <select
-                    value={resolution}
-                    onChange={(e) => setResolution(e.target.value as '720p' | '1080p')}
-                  >
-                    <option value="720p">720p HD (Nhanh, nhẹ)</option>
-                    <option value="1080p">1080p Full HD (Sắc nét)</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="wc-checkbox-group">
-                <label className="wc-checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={enableSubtitles}
-                    onChange={(e) => setEnableSubtitles(e.target.checked)}
-                  />
-                  <span>Hiển thị phụ đề tiếng Việt đồng bộ theo giọng đọc</span>
-                </label>
-
-                <label className="wc-checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={enableBgm}
-                    onChange={(e) => setEnableBgm(e.target.checked)}
-                  />
-                  <span>Ghép nhạc nền ambient bản tin thời tiết</span>
-                </label>
-              </div>
-            </div>
-
-            {/* ACTION BUTTONS */}
-            <div className="wc-action-stack">
-              <button
-                type="button"
-                className="wc-btn-action wc-btn-refresh"
-                onClick={handleGenerateNewProject}
-                disabled={isLoadingWeather || isRenderingNow}
-              >
-                <RefreshCw className={isLoadingWeather ? 'wc-spin' : ''} size={16} />
-                <span>
-                  {isLoadingWeather
-                    ? 'Đang tải thời tiết & tạo kịch bản...'
-                    : '1. Lấy Thời Tiết Mới & Tạo Kịch Bản'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="wc-btn-action wc-btn-preview"
-                onClick={handlePrepareTTSAndPreview}
-                disabled={isPreparingPreview || isRenderingNow || scenes.length === 0}
-              >
-                <Volume2 className={isPreparingPreview ? 'wc-spin' : ''} size={16} />
-                <span>
-                  {isPreparingPreview
-                    ? 'Đang tổng hợp giọng đọc TTS...'
-                    : '2. Tạo Giọng Đọc TTS & Xem Trước Hành Trình'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="wc-btn-action wc-btn-render"
-                onClick={handleStartRenderMP4}
-                disabled={isRenderingNow || scenes.length === 0}
-              >
-                <Film className={isRenderingNow ? 'wc-spin' : ''} size={17} />
-                <span>
-                  {isRenderingNow
-                    ? `Đang Render MP4 (${renderProgress?.progress_pct ?? 0}%)...`
-                    : '3. Render Video MP4 (MapLibre + FFmpeg)'}
-                </span>
-              </button>
-            </div>
-
-            {/* RENDER PROGRESS BOX */}
-            {renderProgress && renderProgress.status !== 'idle' && (
-              <div className={`wc-render-status-card status-${renderProgress.status}`}>
-                <div className="wc-rs-header">
-                  <strong>Trạng thái Render MP4</strong>
-                  <span>{renderProgress.progress_pct}%</span>
+            ) : (
+              /* Render In Progress or Completed */
+              <div className="space-y-4 py-2">
+                <div className="text-center">
+                  <div className="text-xs font-mono uppercase text-rose-400 mb-1">
+                    {renderProgress.status === 'completed' ? 'XUẤT VIDEO HOÀN TẤT' : 'ĐANG XỬ LÝ'}
+                  </div>
+                  <h4 className="text-sm font-semibold text-white">
+                    {renderProgress.current_step}
+                  </h4>
                 </div>
-                <div className="wc-rs-bar-bg">
+
+                {/* Progress Bar */}
+                <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-700 p-0.5">
                   <div
-                    className="wc-rs-bar-fill"
+                    className="h-full bg-gradient-to-r from-rose-600 to-amber-500 rounded-full transition-all duration-300"
                     style={{ width: `${renderProgress.progress_pct}%` }}
                   />
                 </div>
-                <p className="wc-rs-step">{renderProgress.current_step}</p>
-                {renderProgress.total_frames > 0 && (
-                  <p className="wc-rs-frames">
-                    Khung hình bản đồ thật: {renderProgress.frames_rendered} /{' '}
-                    {renderProgress.total_frames} frames
-                  </p>
+
+                <div className="flex justify-between text-xs font-mono text-slate-400">
+                  <span>Tiến độ: {renderProgress.progress_pct.toFixed(1)}%</span>
+                  {renderProgress.total_frames > 0 && (
+                    <span>
+                      Khung hình: {renderProgress.frames_rendered} / {renderProgress.total_frames}
+                    </span>
+                  )}
+                </div>
+
+                {renderProgress.status === 'completed' && renderProgress.output_file && (
+                  <div className="pt-2">
+                    <a
+                      href={`/api/scenarios/${selectedScenarioId}/download`}
+                      download
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-950/70 flex items-center justify-center gap-2 transition"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Tải xuống Video MP4 ngay</span>
+                    </a>
+                  </div>
                 )}
-                {renderProgress.status === 'completed' && project?.output_file && (
-                  <a
-                    className="wc-btn-download-now"
-                    href={`/api/projects/${project.id}/download`}
-                    download={project.output_file}
-                  >
-                    <Download size={16} />
-                    <span>Tải Xuống Video MP4 ({project.output_file})</span>
-                  </a>
+
+                {renderProgress.status === 'failed' && (
+                  <div className="p-3 bg-rose-950/50 border border-rose-500/50 rounded-lg text-rose-300 text-xs">
+                    Lỗi: {renderProgress.error_message || 'Không thể render video.'}
+                  </div>
                 )}
               </div>
             )}
           </div>
-        </aside>
-      </main>
+        </div>
+      )}
     </div>
   );
 };

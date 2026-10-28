@@ -1,4 +1,8 @@
 import {
+  BattleScenario,
+  ScenarioRenderProgress,
+} from '../types/military';
+import {
   CameraPreset,
   HealthResponse,
   PlaceMeta,
@@ -156,5 +160,75 @@ export const api = {
   async getRenderProgress(projectId: string): Promise<RenderProgress> {
     const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/progress`);
     return handleJson<RenderProgress>(resp);
+  },
+
+  // ==========================================
+  // ⚔️ MILITARY HISTORY MAP SCENARIO METHODS
+  // ==========================================
+
+  async listScenarios(): Promise<{
+    count: number;
+    scenarios: Array<{
+      id: string;
+      title: string;
+      subtitle: string;
+      historical_date_range: string;
+      location_name: string;
+      total_duration_sec: number;
+      timeline_steps_count: number;
+      factions: any[];
+      is_builtin: boolean;
+      output_file?: string;
+    }>;
+  }> {
+    const resp = await fetch('/api/scenarios');
+    return handleJson(resp);
+  },
+
+  async getScenario(scenarioId: string): Promise<BattleScenario> {
+    const resp = await fetch(`/api/scenarios/${encodeURIComponent(scenarioId)}`);
+    return handleJson<BattleScenario>(resp);
+  },
+
+  async saveScenario(scenario: BattleScenario): Promise<{
+    message: string;
+    scenario_id: string;
+    scenario: BattleScenario;
+  }> {
+    const resp = await fetch('/api/scenarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scenario),
+    });
+    return handleJson(resp);
+  },
+
+  async startScenarioRender(
+    scenarioId: string,
+    req?: {
+      aspect_ratio?: '16:9' | '9:16' | '1:1';
+      resolution?: '720p' | '1080p';
+      fps?: number;
+      voice_id?: string;
+      voice_rate?: string;
+      enable_bgm?: boolean;
+      enable_subtitles?: boolean;
+    }
+  ): Promise<{
+    message: string;
+    scenario_id: string;
+    progress: ScenarioRenderProgress;
+  }> {
+    const resp = await fetch(`/api/scenarios/${encodeURIComponent(scenarioId)}/render`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req || {}),
+    });
+    return handleJson(resp);
+  },
+
+  async getScenarioRenderProgress(scenarioId: string): Promise<ScenarioRenderProgress> {
+    const resp = await fetch(`/api/scenarios/${encodeURIComponent(scenarioId)}/progress`);
+    return handleJson<ScenarioRenderProgress>(resp);
   },
 };

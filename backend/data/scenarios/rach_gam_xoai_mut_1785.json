@@ -1,0 +1,250 @@
+{
+  "id": "rach_gam_xoai_mut_1785",
+  "title": "TRẬN RẠCH GẦM - XOÀI MÚT (1785)",
+  "subtitle": "Nguyễn Huệ đại phá 5 vạn quân Xiêm - Đỉnh cao nghệ thuật mai phục thủy chiến",
+  "historical_date_range": "19/01/1785 - 20/01/1785",
+  "location_name": "Khúc sông Tiền, từ Rạch Gầm đến rạch Xoài Mút (Tiền Giang)",
+  "center": [106.2650, 10.3380],
+  "default_zoom": 12.5,
+  "default_pitch": 50.0,
+  "default_bearing": -40.0,
+  "terrain_elevation": false,
+  "map_style": "carto_dark",
+  "factions": [
+    {
+      "id": "tay_son",
+      "name": "Nghĩa quân Tây Sơn",
+      "short_name": "Tây Sơn",
+      "color": "#e11d48",
+      "secondary_color": "#9f1239",
+      "commander": "Long Nhượng Tướng quân Nguyễn Huệ",
+      "flag_icon": "🇻🇳",
+      "initial_manpower": 20000,
+      "current_manpower": 20000,
+      "infantry_count": 12000,
+      "artillery_count": 80,
+      "tanks_count": 0,
+      "aircraft_count": 0,
+      "casualties": 0
+    },
+    {
+      "id": "siamese_allies",
+      "name": "Liên quân Xiêm La - Nguyễn Ánh",
+      "short_name": "Quân Xiêm",
+      "color": "#2563eb",
+      "secondary_color": "#1e40af",
+      "commander": "Chiêu Tăng & Chiêu Sương",
+      "flag_icon": "🇹🇭",
+      "initial_manpower": 50000,
+      "current_manpower": 50000,
+      "infantry_count": 30000,
+      "artillery_count": 40,
+      "tanks_count": 0,
+      "aircraft_count": 0,
+      "casualties": 0
+    }
+  ],
+  "units": [
+    {
+      "id": "unit_ts_fleet_center",
+      "faction_id": "tay_son",
+      "name": "Thuyền chiến nhử địch Tây Sơn",
+      "short_name": "Thủy binh nhử địch",
+      "type": "naval",
+      "echelon": "regiment",
+      "coordinates": [106.2250, 10.3300],
+      "strength_initial": 3000,
+      "strength_current": 3000,
+      "status": "active",
+      "facing_deg": 90.0
+    },
+    {
+      "id": "unit_ts_ambush_rach_gam",
+      "faction_id": "tay_son",
+      "name": "Phục binh Pháo thuyền Rạch Gầm (Khóa đuôi)",
+      "short_name": "Phục binh Rạch Gầm",
+      "type": "naval",
+      "echelon": "division",
+      "coordinates": [106.2520, 10.3480],
+      "strength_initial": 6000,
+      "strength_current": 6000,
+      "status": "fortified",
+      "facing_deg": 180.0
+    },
+    {
+      "id": "unit_ts_ambush_thoi_son",
+      "faction_id": "tay_son",
+      "name": "Đại bác & Bộ binh Cù lao Thới Sơn (Chặn đầu)",
+      "short_name": "Hỏa lực Thới Sơn",
+      "type": "artillery",
+      "echelon": "division",
+      "coordinates": [106.3200, 10.3350],
+      "strength_initial": 8000,
+      "strength_current": 8000,
+      "status": "fortified",
+      "facing_deg": 270.0
+    },
+    {
+      "id": "unit_siam_vanguard",
+      "faction_id": "siamese_allies",
+      "name": "Hạm đội Tiên phong Xiêm La (Chiêu Tăng)",
+      "short_name": "Chiến thuyền Xiêm",
+      "type": "naval",
+      "echelon": "corps",
+      "coordinates": [106.2400, 10.3320],
+      "strength_initial": 25000,
+      "strength_current": 25000,
+      "status": "moving",
+      "facing_deg": 105.0
+    }
+  ],
+  "arrows": [
+    {
+      "id": "arrow_siam_advance",
+      "faction_id": "siamese_allies",
+      "name": "Hạm thuyền Xiêm xuôi dòng đuổi theo thuyền nhử",
+      "path_coordinates": [
+        [106.2100, 10.3280],
+        [106.2450, 10.3350],
+        [106.2800, 10.3370]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "main_thrust",
+      "color": "#3b82f6",
+      "stroke_width": 5.0,
+      "start_time": 1.0,
+      "end_time": 10.0,
+      "dashed": false,
+      "head_size": 1.6,
+      "label": "Quân Xiêm lọt vào ổ phục kích"
+    },
+    {
+      "id": "arrow_ts_cut_rear",
+      "faction_id": "tay_son",
+      "name": "Thủy binh Rạch Gầm lao ra khóa chặt đường lui",
+      "path_coordinates": [
+        [106.2520, 10.3520],
+        [106.2550, 10.3380]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "encirclement",
+      "color": "#e11d48",
+      "stroke_width": 6.0,
+      "start_time": 11.0,
+      "end_time": 20.0,
+      "dashed": false,
+      "head_size": 1.8,
+      "label": "Khóa đuôi chặn đường rút"
+    },
+    {
+      "id": "arrow_ts_head_intercept",
+      "faction_id": "tay_son",
+      "name": "Đại bác Cù lao Thới Sơn dội bão lửa chặn đầu",
+      "path_coordinates": [
+        [106.3200, 10.3350],
+        [106.2900, 10.3370]
+      ],
+      "curve_type": "bezier",
+      "arrow_type": "artillery_barrage",
+      "color": "#f59e0b",
+      "stroke_width": 6.0,
+      "start_time": 12.0,
+      "end_time": 22.0,
+      "dashed": true,
+      "head_size": 1.8,
+      "label": "Pháo hạm Tây Sơn giáp công"
+    }
+  ],
+  "territories": [
+    {
+      "id": "territory_ambush_zone",
+      "faction_id": "tay_son",
+      "name": "Trận địa mai phục Rạch Gầm - Xoài Mút",
+      "polygon_coordinates": [
+        [106.2450, 10.3450],
+        [106.3100, 10.3500],
+        [106.3150, 10.3200],
+        [106.2400, 10.3200],
+        [106.2450, 10.3450]
+      ],
+      "color": "#e11d48",
+      "fill_opacity": 0.2,
+      "stroke_color": "#f43f5e",
+      "stroke_width": 2.5,
+      "dashed_stroke": true,
+      "active_time_start": 0.0,
+      "active_time_end": 35.0
+    }
+  ],
+  "combat_events": [
+    {
+      "id": "combat_crossfire_siam",
+      "name": "Hỏa pháo Tây Sơn thiêu rụi chiến thuyền Xiêm",
+      "coordinates": [106.2750, 10.3370],
+      "event_type": "artillery_strike",
+      "start_time": 13.0,
+      "end_time": 28.0,
+      "intensity": 5,
+      "description": "Hơn 300 chiến thuyền Xiêm bị dồn vào khúc sông hẹp, đại bác hai bờ bắn chìm và thiêu rụi gần như toàn bộ."
+    }
+  ],
+  "timeline_steps": [
+    {
+      "step_id": "step_01_decoy",
+      "step_index": 0,
+      "timestamp_label": "Đêm 19 rạng sáng 20/01/1785",
+      "title": "Dụ địch vào tử địa: Thuyền nhử Tây Sơn giả rút lui",
+      "phase_name": "Giai đoạn 1: Khiêu chiến & Nhử địch",
+      "tactical_objective": "Dụ toàn bộ hạm đội thuyền chiến Xiêm xuôi theo dòng nước vào khúc sông mai phục.",
+      "camera": {
+        "center": [106.2400, 10.3350],
+        "zoom": 13.0,
+        "pitch": 45.0,
+        "bearing": -30.0,
+        "duration_sec": 12.0,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 0.0,
+      "end_time": 12.0,
+      "duration_sec": 12.0,
+      "narration_text": "Đêm 19 rạng sáng 20 tháng 1 năm 1785, lợi dụng dòng nước xuôi, quân Xiêm ồ ạt dồn thuyền đuổi theo nhóm thuyền nhử của Tây Sơn. Tướng Chiêu Tăng và Chiêu Sương không ngờ rằng mình đang lọt thẳng vào ổ phục kích dài hơn 6 cây số được bố trí vô cùng hiểm hóc giữa Rạch Gầm và Xoài Mút.",
+      "active_unit_ids": ["unit_ts_fleet_center", "unit_siam_vanguard"],
+      "active_arrow_ids": ["arrow_siam_advance"],
+      "active_combat_ids": [],
+      "active_territory_ids": ["territory_ambush_zone"],
+      "factions_status": {
+        "tay_son": { "current_manpower": 20000, "casualties": 50 },
+        "siamese_allies": { "current_manpower": 50000, "casualties": 300 }
+      }
+    },
+    {
+      "step_id": "step_02_annihilation",
+      "step_index": 1,
+      "timestamp_label": "Rạng sáng 20/01/1785 - Thủy triều rút",
+      "title": "Sấm sét giáng xuống: Bão lửa khóa đầu chặn đuôi",
+      "phase_name": "Giai đoạn 2: Tổng công kích tiêu diệt hạm đội Xiêm",
+      "tactical_objective": "Đại bác hai bờ sông và cù lao bắn xối xả, thuyền chiến Tây Sơn tràn ra đâm chìm toàn bộ tàu địch.",
+      "camera": {
+        "center": [106.2750, 10.3370],
+        "zoom": 13.5,
+        "pitch": 55.0,
+        "bearing": -15.0,
+        "duration_sec": 15.0,
+        "easing": "easeInOutCubic"
+      },
+      "start_time": 12.0,
+      "end_time": 27.0,
+      "duration_sec": 15.0,
+      "narration_text": "Khi thuyền địch lọt trọn vào tầm ngắm, đại pháo từ Cù lao Thới Sơn và hai bờ sông gầm vang dữ dội. Thuyền chiến Tây Sơn từ các nhánh rạch lao ra bịt kín hai đầu. Toàn bộ 300 chiến thuyền quân Xiêm bị thiêu rụi và nhấn chìm dưới dòng sông Tiền, hơn 4 vạn quân xâm lược bị tiêu diệt, đập tan hoàn toàn dã tâm của tập đoàn phong kiến Xiêm.",
+      "active_unit_ids": ["unit_ts_ambush_rach_gam", "unit_ts_ambush_thoi_son", "unit_siam_vanguard"],
+      "active_arrow_ids": ["arrow_ts_cut_rear", "arrow_ts_head_intercept"],
+      "active_combat_ids": ["combat_crossfire_siam"],
+      "active_territory_ids": ["territory_ambush_zone"],
+      "factions_status": {
+        "tay_son": { "current_manpower": 19500, "casualties": 500 },
+        "siamese_allies": { "current_manpower": 5000, "casualties": 45000 }
+      }
+    }
+  ],
+  "total_duration_sec": 27.0
+}

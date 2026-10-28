@@ -1657,3 +1657,176 @@ body,
     display: none;
   }
 }
+
+/* ============================================================================
+   ⚔️ ANIMATED MILITARY HISTORY MAP & NATO TACTICAL COUNTERS
+   ============================================================================ */
+
+.nato-counter-marker-wrapper {
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 15;
+}
+
+.nato-counter-marker-wrapper:hover {
+  transform: scale(1.15) translateY(-2px);
+  z-index: 25;
+}
+
+.nato-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.nato-echelon {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #e2e8f0;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.nato-box {
+  width: 44px;
+  height: 26px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 2.2px solid var(--faction-color, #e11d48);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faction-color, #e11d48);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.75), inset 0 0 8px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
+}
+
+.nato-counter.is-active .nato-box {
+  box-shadow: 0 0 18px var(--faction-color, #e11d48), 0 0 32px var(--faction-color, #e11d48);
+  border-color: #ffffff;
+  transform: scale(1.12);
+}
+
+.nato-symbol-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nato-label {
+  margin-top: 3px;
+  background: rgba(2, 6, 23, 0.88);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.nato-label .unit-code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.2px;
+}
+
+.nato-counter.is-active .nato-label {
+  border-color: var(--faction-color, #e11d48);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.nato-health-bar {
+  width: 42px;
+  height: 3.5px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 2px;
+  margin-top: 2px;
+  overflow: hidden;
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+}
+
+.nato-health-bar .health-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+/* Combat Burst Animations */
+.combat-event-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.combat-burst-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  margin-top: -27px;
+  margin-left: -27px;
+  border-radius: 50%;
+  animation: combat-pulse 1.1s infinite ease-out;
+  pointer-events: none;
+}
+
+.combat-burst-ring.is-artillery {
+  border: 3px solid #f59e0b;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0.1) 60%, transparent 80%);
+}
+
+.combat-burst-ring.is-clash {
+  border: 3px solid #ef4444;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.6) 0%, rgba(239, 68, 68, 0.1) 60%, transparent 80%);
+}
+
+@keyframes combat-pulse {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.combat-burst-core {
+  font-size: 20px;
+  animation: combat-shake 0.3s infinite ease-in-out;
+  filter: drop-shadow(0 0 10px #f59e0b);
+}
+
+@keyframes combat-shake {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-2px, 1px) scale(1.1); }
+  75% { transform: translate(2px, -1px) scale(1.1); }
+}
+
+.combat-burst-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fde68a;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-top: 4px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.3px;
+}
